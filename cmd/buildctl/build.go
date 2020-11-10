@@ -264,13 +264,15 @@ func buildAction(clicontext *cli.Context) error {
 		if err != nil {
 			return err
 		}
-		for k, v := range resp.ExporterResponse {
-			logrus.Debugf("exporter response: %s=%s", k, v)
+		for _, resp := range resp.ExportersResponse {
+			for k, v := range resp {
+				logrus.Debugf("exporter response: %s=%s", k, v)
+			}
 		}
 
 		metadataFile := clicontext.String("metadata-file")
-		if metadataFile != "" && resp.ExporterResponse != nil {
-			if err := writeMetadataFile(metadataFile, resp.ExporterResponse); err != nil {
+		if metadataFile != "" && (resp.ExporterResponse != nil || len(resp.ExportersResponse) != 0) {
+			if err := writeMetadataFile(metadataFile, resp); err != nil {
 				return err
 			}
 		}
@@ -286,10 +288,31 @@ func buildAction(clicontext *cli.Context) error {
 	return eg.Wait()
 }
 
-func writeMetadataFile(filename string, exporterResponse map[string]string) error {
-	var err error
+func writeMetadataFile(filename string, resp *client.SolveResponse) (err error) {
+	if len(resp.ExportersResponse) == 0 {
+		// Keep the old metadata file format
+		b, err := json.MarshalIndent(marshalExporterMetadata(resp.ExporterResponse), "", "  ")
+		if err != nil {
+			return err
+		}
+		return continuity.AtomicWriteFile(filename, b, 0666)
+	}
+	result := []map[string]interface{}{
+		marshalExporterMetadata(resp.ExporterResponse),
+	}
+	for _, md := range resp.ExportersResponse {
+		result = append(result, marshalExporterMetadata(md))
+	}
+	b, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+	return continuity.AtomicWriteFile(filename, b, 0666)
+}
+
+func marshalExporterMetadata(exp map[string]string) map[string]interface{} {
 	out := make(map[string]interface{})
-	for k, v := range exporterResponse {
+	for k, v := range exp {
 		dt, err := base64.StdEncoding.DecodeString(v)
 		if err != nil {
 			out[k] = v
@@ -302,9 +325,5 @@ func writeMetadataFile(filename string, exporterResponse map[string]string) erro
 		}
 		out[k] = json.RawMessage(dt)
 	}
-	b, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		return err
-	}
-	return continuity.AtomicWriteFile(filename, b, 0666)
+	return out
 }

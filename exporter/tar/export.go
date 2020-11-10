@@ -20,6 +20,8 @@ import (
 )
 
 const (
+	Name = "tar"
+
 	// preferNondistLayersKey is an exporter option which can be used to mark a layer as non-distributable if the layer reference was
 	// already found to use a non-distributable media type.
 	// When this option is not set, the exporter will change the media type of the layer to a distributable one.

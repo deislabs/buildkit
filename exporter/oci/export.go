@@ -233,6 +233,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 
 	resp := make(map[string]string)
 
+	resp[exptypes.ExporterTypeKey] = string(e.opt.Variant)
 	resp[exptypes.ExporterImageDigestKey] = desc.Digest.String()
 	if v, ok := desc.Annotations[exptypes.ExporterConfigDigestKey]; ok {
 		resp[exptypes.ExporterImageConfigDigestKey] = v

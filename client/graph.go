@@ -56,4 +56,6 @@ type SolveStatus struct {
 type SolveResponse struct {
 	// ExporterResponse is also used for CacheExporter
 	ExporterResponse map[string]string
+	// ExportersResponse lists metadata from output exporters
+	ExportersResponse []map[string]string
 }

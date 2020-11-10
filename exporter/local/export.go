@@ -19,6 +19,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const Name = "local"
+
 type Opt struct {
 	SessionManager *session.Manager
 }

@@ -34,6 +34,8 @@ import (
 )
 
 const (
+	Name = "image"
+
 	keyImageName        = "name"
 	keyPush             = "push"
 	keyPushByDigest     = "push-by-digest"
@@ -372,6 +374,7 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 		return nil, err
 	}
 	resp[exptypes.ExporterImageDescriptorKey] = base64.StdEncoding.EncodeToString(dtdesc)
+	resp[exptypes.ExporterTypeKey] = Name
 
 	return resp, nil
 }

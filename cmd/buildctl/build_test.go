@@ -16,6 +16,7 @@ import (
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/continuity/fs/fstest"
 	"github.com/moby/buildkit/client/llb"
+	"github.com/moby/buildkit/exporter/containerimage"
 	"github.com/moby/buildkit/exporter/containerimage/exptypes"
 	"github.com/moby/buildkit/util/testutil/integration"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
@@ -141,20 +142,22 @@ func testBuildMetadataFile(t *testing.T, sb integration.Sandbox) {
 	metadataBytes, err := os.ReadFile(metadataFile)
 	require.NoError(t, err)
 
-	var metadata map[string]interface{}
+	var metadata []map[string]interface{}
 	err = json.Unmarshal(metadataBytes, &metadata)
 	require.NoError(t, err)
 
-	require.Contains(t, metadata, "image.name")
-	require.Equal(t, imageName, metadata["image.name"])
+	exporterMetadata := validateExporterMetadata(t, metadata, containerimage.Name)
 
-	require.Contains(t, metadata, exptypes.ExporterImageDigestKey)
-	digest := metadata[exptypes.ExporterImageDigestKey]
+	require.Contains(t, exporterMetadata, "image.name")
+	require.Equal(t, imageName, exporterMetadata["image.name"])
+
+	require.Contains(t, exporterMetadata, exptypes.ExporterImageDigestKey)
+	digest := exporterMetadata[exptypes.ExporterImageDigestKey]
 	require.NotEmpty(t, digest)
 
-	require.Contains(t, metadata, exptypes.ExporterImageDescriptorKey)
+	require.Contains(t, exporterMetadata, exptypes.ExporterImageDescriptorKey)
 	var desc *ocispecs.Descriptor
-	dtdesc, err := json.Marshal(metadata[exptypes.ExporterImageDescriptorKey])
+	dtdesc, err := json.Marshal(exporterMetadata[exptypes.ExporterImageDescriptorKey])
 	require.NoError(t, err)
 	err = json.Unmarshal(dtdesc, &desc)
 	require.NoError(t, err)
@@ -176,6 +179,17 @@ func testBuildMetadataFile(t *testing.T, sb integration.Sandbox) {
 
 		require.Equal(t, img.Metadata().Target.Digest.String(), digest)
 	}
+}
+
+func validateExporterMetadata(t *testing.T, metadata []map[string]interface{}, exporter string) (result map[string]interface{}) {
+	require.NotEmpty(t, metadata)
+	for _, md := range metadata {
+		if typ, ok := md[exptypes.ExporterTypeKey]; ok && typ == exporter {
+			return md
+		}
+	}
+	require.Failf(t, "required exporter metadata not found in the list", "exporter %s", exporter)
+	return nil
 }
 
 func marshal(ctx context.Context, st llb.State) (io.Reader, error) {

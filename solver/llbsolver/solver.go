@@ -32,7 +32,7 @@ import (
 const keyEntitlements = "llb.entitlements"
 
 type ExporterRequest struct {
-	Exporter        exporter.ExporterInstance
+	Exporters       []exporter.ExporterInstance
 	CacheExporter   remotecache.Exporter
 	CacheExportMode solver.CacheExportMode
 }
@@ -104,7 +104,7 @@ func (s *Solver) Bridge(b solver.Builder) frontend.FrontendLLBBridge {
 	}
 }
 
-func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req frontend.SolveRequest, exp ExporterRequest, ent []entitlements.Entitlement) (*client.SolveResponse, error) {
+func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req frontend.SolveRequest, out ExporterRequest, ent []entitlements.Entitlement) (*client.SolveResponse, error) {
 	j, err := s.solver.NewJob(id)
 	if err != nil {
 		return nil, err
@@ -199,8 +199,8 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		}
 	}
 
-	var exporterResponse map[string]string
-	if e := exp.Exporter; e != nil {
+	exportersResponse := []map[string]string{}
+	for _, exp := range out.Exporters {
 		inp := exporter.Source{
 			Metadata: res.Metadata,
 		}
@@ -241,10 +241,10 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 			}
 			inp.Refs = m
 		}
-		if _, ok := asInlineCache(exp.CacheExporter); ok {
+		if _, ok := asInlineCache(out.CacheExporter); ok {
 			if err := inBuilderContext(ctx, j, "preparing layers for inline cache", "", func(ctx context.Context, _ session.Group) error {
 				if cr != nil {
-					dtic, err := inlineCache(ctx, exp.CacheExporter, cr, e.Config().Compression, session.NewGroup(sessionID))
+					dtic, err := inlineCache(ctx, out.CacheExporter, cr, exp.Config().Compression, session.NewGroup(sessionID))
 					if err != nil {
 						return err
 					}
@@ -253,7 +253,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 					}
 				}
 				for k, res := range crMap {
-					dtic, err := inlineCache(ctx, exp.CacheExporter, res, e.Config().Compression, session.NewGroup(sessionID))
+					dtic, err := inlineCache(ctx, out.CacheExporter, res, exp.Config().Compression, session.NewGroup(sessionID))
 					if err != nil {
 						return err
 					}
@@ -261,15 +261,21 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 						inp.Metadata[fmt.Sprintf("%s/%s", exptypes.ExporterInlineCache, k)] = dtic
 					}
 				}
-				exp.CacheExporter = nil
+				out.CacheExporter = nil
 				return nil
 			}); err != nil {
 				return nil, err
 			}
 		}
-		if err := inBuilderContext(ctx, j, e.Name(), "", func(ctx context.Context, _ session.Group) error {
-			exporterResponse, err = e.Export(ctx, inp, j.SessionID)
-			return err
+		if err := inBuilderContext(ctx, j, exp.Name(), "", func(ctx context.Context, _ session.Group) error {
+			resp, err := exp.Export(ctx, inp, j.SessionID)
+			if err != nil {
+				return err
+			}
+			if resp != nil {
+				exportersResponse = append(exportersResponse, resp)
+			}
+			return nil
 		}); err != nil {
 			return nil, err
 		}
@@ -277,7 +283,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 
 	g := session.NewGroup(j.SessionID)
 	var cacheExporterResponse map[string]string
-	if e := exp.CacheExporter; e != nil {
+	if e := out.CacheExporter; e != nil {
 		if err := inBuilderContext(ctx, j, "exporting cache", "", func(ctx context.Context, _ session.Group) error {
 			prepareDone := oneOffProgress(ctx, "preparing build cache for export")
 			if err := res.EachRef(func(res solver.ResultProxy) error {
@@ -298,7 +304,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 				// all keys have same export chain so exporting others is not needed
 				_, err = r.CacheKeys()[0].Exporter.ExportTo(ctx, e, solver.CacheExportOpt{
 					ResolveRemotes: workerRefResolver(cacheconfig.RefConfig{Compression: compressionConfig}, false, g),
-					Mode:           exp.CacheExportMode,
+					Mode:           out.CacheExportMode,
 					Session:        g,
 					CompressionOpt: &compressionConfig,
 				})
@@ -314,10 +320,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		}
 	}
 
-	if exporterResponse == nil {
-		exporterResponse = make(map[string]string)
-	}
-
+	exporterResponse := make(map[string]string)
 	for k, v := range res.Metadata {
 		if strings.HasPrefix(k, "frontend.") {
 			exporterResponse[k] = string(v)
@@ -333,7 +336,8 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 	}
 
 	return &client.SolveResponse{
-		ExporterResponse: exporterResponse,
+		ExporterResponse:  exporterResponse,
+		ExportersResponse: exportersResponse,
 	}, nil
 }
 

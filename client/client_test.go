@@ -134,6 +134,8 @@ func TestIntegration(t *testing.T) {
 		testTarExporterWithSocketCopy,
 		testTarExporterSymlink,
 		testMultipleRegistryCacheImportExport,
+		testMultipleExporters,
+		testPreventsMultipleExportWithSameExporter,
 		testSourceMap,
 		testSourceMapFromRef,
 		testLazyImagePush,
@@ -1891,6 +1893,81 @@ func testUser(t *testing.T, sb integration.Sandbox) {
 	require.Equal(t, "0", strings.TrimSpace(string(dt)))
 
 	checkAllReleasable(t, c, sb, true)
+}
+
+func testPreventsMultipleExportWithSameExporter(t *testing.T, sb integration.Sandbox) {
+	integration.SkipIfDockerd(t, sb, "multiple exporters")
+	requiresLinux(t)
+
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	def, err := llb.Image("busybox").Marshal(context.TODO())
+	require.NoError(t, err)
+
+	destDir1, destDir2 := t.TempDir(), t.TempDir()
+
+	_, err = c.Solve(sb.Context(), def, SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type:      ExporterLocal,
+				OutputDir: destDir1,
+			},
+			{
+				Type:      ExporterLocal,
+				OutputDir: destDir2,
+			},
+		},
+	}, nil)
+	require.Errorf(t, err, "using multiple ExporterLocal is not supported")
+}
+
+func testMultipleExporters(t *testing.T, sb integration.Sandbox) {
+	integration.SkipIfDockerd(t, sb, "multiple exporters")
+	requiresLinux(t)
+
+	c, err := New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	def, err := llb.Image("busybox").Marshal(context.TODO())
+	require.NoError(t, err)
+
+	destDir := t.TempDir()
+
+	registry, err := sb.NewRegistry()
+	if errors.Is(err, integration.ErrRequirements) {
+		t.Skip(err.Error())
+	}
+	require.NoError(t, err)
+
+	target1, target2 := registry+"/buildkit/build/exporter:image",
+		registry+"/buildkit/build/alternative:image"
+
+	resp, err := c.Solve(sb.Context(), def, SolveOpt{
+		Exports: []ExportEntry{
+			{
+				Type:      ExporterLocal,
+				OutputDir: destDir,
+			},
+			{
+				Type: ExporterImage,
+				Attrs: map[string]string{
+					"name": target1,
+				},
+			},
+			{
+				Type: ExporterImage,
+				Attrs: map[string]string{
+					"name": target2,
+				},
+			},
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	validateMetadataContains(t, resp.ExportersResponse, "image.name", []string{target1, target2})
 }
 
 func testOCIExporter(t *testing.T, sb integration.Sandbox) {
@@ -5772,6 +5849,14 @@ func makeSSHAgentSock(agent agent.Agent) (p string, cleanup func() error, err er
 		l.Close()
 		return os.RemoveAll(tmpDir)
 	}, nil
+}
+
+func validateMetadataContains(t *testing.T, mds []map[string]string, key string, expectedValues []string) {
+	var values []string
+	for _, md := range mds {
+		values = append(values, md[key])
+	}
+	require.ElementsMatch(t, values, expectedValues)
 }
 
 type server struct {
