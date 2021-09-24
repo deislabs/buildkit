@@ -20,7 +20,7 @@ import (
 	"context"
 
 	cnilibrary "github.com/containernetworking/cni/libcni"
-	types100 "github.com/containernetworking/cni/pkg/types/100"
+	"github.com/containernetworking/cni/pkg/types/current"
 )
 
 type Network struct {
@@ -29,12 +29,12 @@ type Network struct {
 	ifName string
 }
 
-func (n *Network) Attach(ctx context.Context, ns *Namespace) (*types100.Result, error) {
+func (n *Network) Attach(ctx context.Context, ns *Namespace) (*current.Result, error) {
 	r, err := n.cni.AddNetworkList(ctx, n.config, ns.config(n.ifName))
 	if err != nil {
 		return nil, err
 	}
-	return types100.NewResultFromResult(r)
+	return current.NewResultFromResult(r)
 }
 
 func (n *Network) Remove(ctx context.Context, ns *Namespace) error {

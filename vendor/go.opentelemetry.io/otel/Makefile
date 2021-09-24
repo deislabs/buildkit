@@ -40,11 +40,8 @@ $(TOOLS)/%: | $(TOOLS)
 	cd $(TOOLS_MOD_DIR) && \
 	$(GO) build -o $@ $(PACKAGE)
 
-MULTIMOD = $(TOOLS)/multimod
-$(TOOLS)/multimod: PACKAGE=go.opentelemetry.io/build-tools/multimod
-
-SEMCONVGEN = $(TOOLS)/semconvgen
-$(TOOLS)/semconvgen: PACKAGE=go.opentelemetry.io/build-tools/semconvgen
+SEMCONVGEN = $(TOOLS)/semconv-gen
+$(TOOLS)/semconv-gen: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/semconv-gen
 
 CROSSLINK = $(TOOLS)/crosslink
 $(TOOLS)/crosslink: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/crosslink
@@ -53,22 +50,16 @@ GOLANGCI_LINT = $(TOOLS)/golangci-lint
 $(TOOLS)/golangci-lint: PACKAGE=github.com/golangci/golangci-lint/cmd/golangci-lint
 
 MISSPELL = $(TOOLS)/misspell
-$(TOOLS)/misspell: PACKAGE=github.com/client9/misspell/cmd/misspell
-
-GOCOVMERGE = $(TOOLS)/gocovmerge
-$(TOOLS)/gocovmerge: PACKAGE=github.com/wadey/gocovmerge
+$(TOOLS)/misspell: PACKAGE= github.com/client9/misspell/cmd/misspell
 
 STRINGER = $(TOOLS)/stringer
 $(TOOLS)/stringer: PACKAGE=golang.org/x/tools/cmd/stringer
 
-PORTO = $(TOOLS)/porto
-$(TOOLS)/porto: PACKAGE=github.com/jcchavezs/porto/cmd/porto
-
-GOJQ = $(TOOLS)/gojq
 $(TOOLS)/gojq: PACKAGE=github.com/itchyny/gojq/cmd/gojq
 
 .PHONY: tools
-tools: $(CROSSLINK) $(GOLANGCI_LINT) $(MISSPELL) $(GOCOVMERGE) $(STRINGER) $(PORTO) $(GOJQ) $(SEMCONVGEN) $(MULTIMOD)
+tools: $(CROSSLINK) $(GOLANGCI_LINT) $(MISSPELL) $(STRINGER) $(TOOLS)/gojq $(SEMCONVGEN)
+
 
 # Build
 
@@ -80,12 +71,11 @@ examples:
 	   $(GO) build .); \
 	done
 
-generate: $(STRINGER) $(PORTO)
+generate: $(STRINGER)
 	set -e; for dir in $(ALL_GO_MOD_DIRS); do \
 	  echo "$(GO) generate $${dir}/..."; \
 	  (cd "$${dir}" && \
-	    PATH="$(TOOLS):$${PATH}" $(GO) generate ./... && \
-		$(PORTO) -w .); \
+	    PATH="$(TOOLS):$${PATH}" $(GO) generate ./...); \
 	done
 
 build: generate
@@ -121,18 +111,19 @@ test:
 COVERAGE_MODE    = atomic
 COVERAGE_PROFILE = coverage.out
 .PHONY: test-coverage
-test-coverage: | $(GOCOVMERGE)
+test-coverage:
 	@set -e; \
 	printf "" > coverage.txt; \
 	for dir in $(ALL_COVERAGE_MOD_DIRS); do \
-	  echo "$(GO) test -coverpkg=go.opentelemetry.io/otel/... -covermode=$(COVERAGE_MODE) -coverprofile="$(COVERAGE_PROFILE)" $${dir}/..."; \
+	  echo "$(GO) test -coverpkg=./... -covermode=$(COVERAGE_MODE) -coverprofile="$(COVERAGE_PROFILE)" $${dir}/..."; \
 	  (cd "$${dir}" && \
 	    $(GO) list ./... \
 	    | grep -v third_party \
 	    | xargs $(GO) test -coverpkg=./... -covermode=$(COVERAGE_MODE) -coverprofile="$(COVERAGE_PROFILE)" && \
 	  $(GO) tool cover -html=coverage.out -o coverage.html); \
+	  [ -f "$${dir}/coverage.out" ] && cat "$${dir}/coverage.out" >> coverage.txt; \
 	done; \
-	$(GOCOVMERGE) $$(find . -name coverage.out) > coverage.txt
+	sed -i.bak -e '2,$$ { /^mode: /d; }' coverage.txt
 
 .PHONY: lint
 lint: misspell lint-modules | $(GOLANGCI_LINT)
@@ -142,10 +133,6 @@ lint: misspell lint-modules | $(GOLANGCI_LINT)
 	    $(GOLANGCI_LINT) run --fix && \
 	    $(GOLANGCI_LINT) run); \
 	done
-
-.PHONY: vanity-import-check
-vanity-import-check: | $(PORTO)
-	$(PORTO) --include-internal -l .
 
 .PHONY: misspell
 misspell: | $(MISSPELL)
@@ -194,14 +181,3 @@ check-clean-work-tree:
 	  git status; \
 	  exit 1; \
 	fi
-
-.PHONY: prerelease
-prerelease: | $(MULTIMOD)
-	@[ "${MODSET}" ] || ( echo ">> env var MODSET is not set"; exit 1 )
-	$(MULTIMOD) verify && $(MULTIMOD) prerelease -m ${MODSET}
-
-COMMIT ?= "HEAD"
-.PHONY: add-tags
-add-tags: | $(MULTIMOD)
-	@[ "${MODSET}" ] || ( echo ">> env var MODSET is not set"; exit 1 )
-	$(MULTIMOD) verify && $(MULTIMOD) tag -m ${MODSET} -c ${COMMIT}

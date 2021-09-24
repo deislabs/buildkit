@@ -75,7 +75,7 @@ func MarshalText(w io.Writer, m *Manifest) error {
 // BuildManifest creates the manifest for the given context
 func BuildManifest(ctx Context) (*Manifest, error) {
 	resourcesByPath := map[string]Resource{}
-	hardLinks := newHardlinkManager()
+	hardlinks := newHardlinkManager()
 
 	if err := ctx.Walk(func(p string, fi os.FileInfo, err error) error {
 		if err != nil {
@@ -97,7 +97,7 @@ func BuildManifest(ctx Context) (*Manifest, error) {
 		}
 
 		// add to the hardlink manager
-		if err := hardLinks.Add(fi, resource); err == nil {
+		if err := hardlinks.Add(fi, resource); err == nil {
 			// Resource has been accepted by hardlink manager so we don't add
 			// it to the resourcesByPath until we merge at the end.
 			return nil
@@ -114,12 +114,14 @@ func BuildManifest(ctx Context) (*Manifest, error) {
 	}
 
 	// merge and post-process the hardlinks.
-	hardLinked, err := hardLinks.Merge()
+	// nolint:misspell
+	hardlinked, err := hardlinks.Merge()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, resource := range hardLinked {
+	// nolint:misspell
+	for _, resource := range hardlinked {
 		resourcesByPath[resource.Path()] = resource
 	}
 

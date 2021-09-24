@@ -41,7 +41,7 @@ type config struct {
 
 // Option applies an option value for a config.
 type Option interface {
-	apply(*config)
+	Apply(*config)
 }
 
 // newConfig returns a config configured with all the passed Options.
@@ -51,17 +51,15 @@ func newConfig(opts []Option) *config {
 		TracerProvider: otel.GetTracerProvider(),
 	}
 	for _, o := range opts {
-		o.apply(c)
+		o.Apply(c)
 	}
 	return c
 }
 
 type propagatorsOption struct{ p propagation.TextMapPropagator }
 
-func (o propagatorsOption) apply(c *config) {
-	if o.p != nil {
-		c.Propagators = o.p
-	}
+func (o propagatorsOption) Apply(c *config) {
+	c.Propagators = o.p
 }
 
 // WithPropagators returns an Option to use the Propagators when extracting
@@ -72,10 +70,8 @@ func WithPropagators(p propagation.TextMapPropagator) Option {
 
 type tracerProviderOption struct{ tp trace.TracerProvider }
 
-func (o tracerProviderOption) apply(c *config) {
-	if o.tp != nil {
-		c.TracerProvider = o.tp
-	}
+func (o tracerProviderOption) Apply(c *config) {
+	c.TracerProvider = o.tp
 }
 
 // WithTracerProvider returns an Option to use the TracerProvider when

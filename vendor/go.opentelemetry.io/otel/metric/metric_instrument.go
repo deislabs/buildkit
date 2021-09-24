@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:generate stringer -type=InstrumentKind
+
 package metric // import "go.opentelemetry.io/otel/metric"
 
 import (
@@ -25,9 +27,72 @@ import (
 // ErrSDKReturnedNilImpl is returned when a new `MeterImpl` returns nil.
 var ErrSDKReturnedNilImpl = errors.New("SDK returned a nil implementation")
 
+// InstrumentKind describes the kind of instrument.
+type InstrumentKind int8
+
+const (
+	// ValueRecorderInstrumentKind indicates a ValueRecorder instrument.
+	ValueRecorderInstrumentKind InstrumentKind = iota
+	// ValueObserverInstrumentKind indicates an ValueObserver instrument.
+	ValueObserverInstrumentKind
+
+	// CounterInstrumentKind indicates a Counter instrument.
+	CounterInstrumentKind
+	// UpDownCounterInstrumentKind indicates a UpDownCounter instrument.
+	UpDownCounterInstrumentKind
+
+	// SumObserverInstrumentKind indicates a SumObserver instrument.
+	SumObserverInstrumentKind
+	// UpDownSumObserverInstrumentKind indicates a UpDownSumObserver
+	// instrument.
+	UpDownSumObserverInstrumentKind
+)
+
+// Synchronous returns whether this is a synchronous kind of instrument.
+func (k InstrumentKind) Synchronous() bool {
+	switch k {
+	case CounterInstrumentKind, UpDownCounterInstrumentKind, ValueRecorderInstrumentKind:
+		return true
+	}
+	return false
+}
+
+// Asynchronous returns whether this is an asynchronous kind of instrument.
+func (k InstrumentKind) Asynchronous() bool {
+	return !k.Synchronous()
+}
+
+// Adding returns whether this kind of instrument adds its inputs (as opposed to Grouping).
+func (k InstrumentKind) Adding() bool {
+	switch k {
+	case CounterInstrumentKind, UpDownCounterInstrumentKind, SumObserverInstrumentKind, UpDownSumObserverInstrumentKind:
+		return true
+	}
+	return false
+}
+
+// Grouping returns whether this kind of instrument groups its inputs (as opposed to Adding).
+func (k InstrumentKind) Grouping() bool {
+	return !k.Adding()
+}
+
+// Monotonic returns whether this kind of instrument exposes a non-decreasing sum.
+func (k InstrumentKind) Monotonic() bool {
+	switch k {
+	case CounterInstrumentKind, SumObserverInstrumentKind:
+		return true
+	}
+	return false
+}
+
+// PrecomputedSum returns whether this kind of instrument receives precomputed sums.
+func (k InstrumentKind) PrecomputedSum() bool {
+	return k.Adding() && k.Asynchronous()
+}
+
 // Observation is used for reporting an asynchronous  batch of metric
 // values. Instances of this type should be created by asynchronous
-// instruments (e.g., Int64GaugeObserver.Observation()).
+// instruments (e.g., Int64ValueObserver.Observation()).
 type Observation struct {
 	// number needs to be aligned for 64-bit atomic operations.
 	number     number.Number
@@ -174,40 +239,40 @@ func (b *BatchObserverFunc) Run(ctx context.Context, function func([]attribute.K
 	})
 }
 
-// wrapInt64GaugeObserverInstrument converts an AsyncImpl into Int64GaugeObserver.
-func wrapInt64GaugeObserverInstrument(asyncInst AsyncImpl, err error) (Int64GaugeObserver, error) {
+// wrapInt64ValueObserverInstrument converts an AsyncImpl into Int64ValueObserver.
+func wrapInt64ValueObserverInstrument(asyncInst AsyncImpl, err error) (Int64ValueObserver, error) {
 	common, err := checkNewAsync(asyncInst, err)
-	return Int64GaugeObserver{asyncInstrument: common}, err
+	return Int64ValueObserver{asyncInstrument: common}, err
 }
 
-// wrapFloat64GaugeObserverInstrument converts an AsyncImpl into Float64GaugeObserver.
-func wrapFloat64GaugeObserverInstrument(asyncInst AsyncImpl, err error) (Float64GaugeObserver, error) {
+// wrapFloat64ValueObserverInstrument converts an AsyncImpl into Float64ValueObserver.
+func wrapFloat64ValueObserverInstrument(asyncInst AsyncImpl, err error) (Float64ValueObserver, error) {
 	common, err := checkNewAsync(asyncInst, err)
-	return Float64GaugeObserver{asyncInstrument: common}, err
+	return Float64ValueObserver{asyncInstrument: common}, err
 }
 
-// wrapInt64CounterObserverInstrument converts an AsyncImpl into Int64CounterObserver.
-func wrapInt64CounterObserverInstrument(asyncInst AsyncImpl, err error) (Int64CounterObserver, error) {
+// wrapInt64SumObserverInstrument converts an AsyncImpl into Int64SumObserver.
+func wrapInt64SumObserverInstrument(asyncInst AsyncImpl, err error) (Int64SumObserver, error) {
 	common, err := checkNewAsync(asyncInst, err)
-	return Int64CounterObserver{asyncInstrument: common}, err
+	return Int64SumObserver{asyncInstrument: common}, err
 }
 
-// wrapFloat64CounterObserverInstrument converts an AsyncImpl into Float64CounterObserver.
-func wrapFloat64CounterObserverInstrument(asyncInst AsyncImpl, err error) (Float64CounterObserver, error) {
+// wrapFloat64SumObserverInstrument converts an AsyncImpl into Float64SumObserver.
+func wrapFloat64SumObserverInstrument(asyncInst AsyncImpl, err error) (Float64SumObserver, error) {
 	common, err := checkNewAsync(asyncInst, err)
-	return Float64CounterObserver{asyncInstrument: common}, err
+	return Float64SumObserver{asyncInstrument: common}, err
 }
 
-// wrapInt64UpDownCounterObserverInstrument converts an AsyncImpl into Int64UpDownCounterObserver.
-func wrapInt64UpDownCounterObserverInstrument(asyncInst AsyncImpl, err error) (Int64UpDownCounterObserver, error) {
+// wrapInt64UpDownSumObserverInstrument converts an AsyncImpl into Int64UpDownSumObserver.
+func wrapInt64UpDownSumObserverInstrument(asyncInst AsyncImpl, err error) (Int64UpDownSumObserver, error) {
 	common, err := checkNewAsync(asyncInst, err)
-	return Int64UpDownCounterObserver{asyncInstrument: common}, err
+	return Int64UpDownSumObserver{asyncInstrument: common}, err
 }
 
-// wrapFloat64UpDownCounterObserverInstrument converts an AsyncImpl into Float64UpDownCounterObserver.
-func wrapFloat64UpDownCounterObserverInstrument(asyncInst AsyncImpl, err error) (Float64UpDownCounterObserver, error) {
+// wrapFloat64UpDownSumObserverInstrument converts an AsyncImpl into Float64UpDownSumObserver.
+func wrapFloat64UpDownSumObserverInstrument(asyncInst AsyncImpl, err error) (Float64UpDownSumObserver, error) {
 	common, err := checkNewAsync(asyncInst, err)
-	return Float64UpDownCounterObserver{asyncInstrument: common}, err
+	return Float64UpDownSumObserver{asyncInstrument: common}, err
 }
 
 // BatchObserver represents an Observer callback that can report
@@ -217,39 +282,39 @@ type BatchObserver struct {
 	runner AsyncBatchRunner
 }
 
-// Int64GaugeObserver is a metric that captures a set of int64 values at a
+// Int64ValueObserver is a metric that captures a set of int64 values at a
 // point in time.
-type Int64GaugeObserver struct {
+type Int64ValueObserver struct {
 	asyncInstrument
 }
 
-// Float64GaugeObserver is a metric that captures a set of float64 values
+// Float64ValueObserver is a metric that captures a set of float64 values
 // at a point in time.
-type Float64GaugeObserver struct {
+type Float64ValueObserver struct {
 	asyncInstrument
 }
 
-// Int64CounterObserver is a metric that captures a precomputed sum of
+// Int64SumObserver is a metric that captures a precomputed sum of
 // int64 values at a point in time.
-type Int64CounterObserver struct {
+type Int64SumObserver struct {
 	asyncInstrument
 }
 
-// Float64CounterObserver is a metric that captures a precomputed sum of
+// Float64SumObserver is a metric that captures a precomputed sum of
 // float64 values at a point in time.
-type Float64CounterObserver struct {
+type Float64SumObserver struct {
 	asyncInstrument
 }
 
-// Int64UpDownCounterObserver is a metric that captures a precomputed sum of
+// Int64UpDownSumObserver is a metric that captures a precomputed sum of
 // int64 values at a point in time.
-type Int64UpDownCounterObserver struct {
+type Int64UpDownSumObserver struct {
 	asyncInstrument
 }
 
-// Float64UpDownCounterObserver is a metric that captures a precomputed sum of
+// Float64UpDownSumObserver is a metric that captures a precomputed sum of
 // float64 values at a point in time.
-type Float64UpDownCounterObserver struct {
+type Float64UpDownSumObserver struct {
 	asyncInstrument
 }
 
@@ -257,7 +322,7 @@ type Float64UpDownCounterObserver struct {
 // argument, for an asynchronous integer instrument.
 // This returns an implementation-level object for use by the SDK,
 // users should not refer to this.
-func (i Int64GaugeObserver) Observation(v int64) Observation {
+func (i Int64ValueObserver) Observation(v int64) Observation {
 	return Observation{
 		number:     number.NewInt64Number(v),
 		instrument: i.instrument,
@@ -268,7 +333,7 @@ func (i Int64GaugeObserver) Observation(v int64) Observation {
 // argument, for an asynchronous integer instrument.
 // This returns an implementation-level object for use by the SDK,
 // users should not refer to this.
-func (f Float64GaugeObserver) Observation(v float64) Observation {
+func (f Float64ValueObserver) Observation(v float64) Observation {
 	return Observation{
 		number:     number.NewFloat64Number(v),
 		instrument: f.instrument,
@@ -279,7 +344,7 @@ func (f Float64GaugeObserver) Observation(v float64) Observation {
 // argument, for an asynchronous integer instrument.
 // This returns an implementation-level object for use by the SDK,
 // users should not refer to this.
-func (i Int64CounterObserver) Observation(v int64) Observation {
+func (i Int64SumObserver) Observation(v int64) Observation {
 	return Observation{
 		number:     number.NewInt64Number(v),
 		instrument: i.instrument,
@@ -290,7 +355,7 @@ func (i Int64CounterObserver) Observation(v int64) Observation {
 // argument, for an asynchronous integer instrument.
 // This returns an implementation-level object for use by the SDK,
 // users should not refer to this.
-func (f Float64CounterObserver) Observation(v float64) Observation {
+func (f Float64SumObserver) Observation(v float64) Observation {
 	return Observation{
 		number:     number.NewFloat64Number(v),
 		instrument: f.instrument,
@@ -301,7 +366,7 @@ func (f Float64CounterObserver) Observation(v float64) Observation {
 // argument, for an asynchronous integer instrument.
 // This returns an implementation-level object for use by the SDK,
 // users should not refer to this.
-func (i Int64UpDownCounterObserver) Observation(v int64) Observation {
+func (i Int64UpDownSumObserver) Observation(v int64) Observation {
 	return Observation{
 		number:     number.NewInt64Number(v),
 		instrument: i.instrument,
@@ -312,7 +377,7 @@ func (i Int64UpDownCounterObserver) Observation(v int64) Observation {
 // argument, for an asynchronous integer instrument.
 // This returns an implementation-level object for use by the SDK,
 // users should not refer to this.
-func (f Float64UpDownCounterObserver) Observation(v float64) Observation {
+func (f Float64UpDownSumObserver) Observation(v float64) Observation {
 	return Observation{
 		number:     number.NewFloat64Number(v),
 		instrument: f.instrument,
@@ -474,16 +539,16 @@ func wrapFloat64UpDownCounterInstrument(syncInst SyncImpl, err error) (Float64Up
 	return Float64UpDownCounter{syncInstrument: common}, err
 }
 
-// wrapInt64HistogramInstrument converts a SyncImpl into Int64Histogram.
-func wrapInt64HistogramInstrument(syncInst SyncImpl, err error) (Int64Histogram, error) {
+// wrapInt64ValueRecorderInstrument converts a SyncImpl into Int64ValueRecorder.
+func wrapInt64ValueRecorderInstrument(syncInst SyncImpl, err error) (Int64ValueRecorder, error) {
 	common, err := checkNewSync(syncInst, err)
-	return Int64Histogram{syncInstrument: common}, err
+	return Int64ValueRecorder{syncInstrument: common}, err
 }
 
-// wrapFloat64HistogramInstrument converts a SyncImpl into Float64Histogram.
-func wrapFloat64HistogramInstrument(syncInst SyncImpl, err error) (Float64Histogram, error) {
+// wrapFloat64ValueRecorderInstrument converts a SyncImpl into Float64ValueRecorder.
+func wrapFloat64ValueRecorderInstrument(syncInst SyncImpl, err error) (Float64ValueRecorder, error) {
 	common, err := checkNewSync(syncInst, err)
-	return Float64Histogram{syncInstrument: common}, err
+	return Float64ValueRecorder{syncInstrument: common}, err
 }
 
 // Float64Counter is a metric that accumulates float64 values.
@@ -635,78 +700,78 @@ func (b BoundInt64UpDownCounter) Add(ctx context.Context, value int64) {
 	b.directRecord(ctx, number.NewInt64Number(value))
 }
 
-// Float64Histogram is a metric that records float64 values.
-type Float64Histogram struct {
+// Float64ValueRecorder is a metric that records float64 values.
+type Float64ValueRecorder struct {
 	syncInstrument
 }
 
-// Int64Histogram is a metric that records int64 values.
-type Int64Histogram struct {
+// Int64ValueRecorder is a metric that records int64 values.
+type Int64ValueRecorder struct {
 	syncInstrument
 }
 
-// BoundFloat64Histogram is a bound instrument for Float64Histogram.
+// BoundFloat64ValueRecorder is a bound instrument for Float64ValueRecorder.
 //
 // It inherits the Unbind function from syncBoundInstrument.
-type BoundFloat64Histogram struct {
+type BoundFloat64ValueRecorder struct {
 	syncBoundInstrument
 }
 
-// BoundInt64Histogram is a bound instrument for Int64Histogram.
+// BoundInt64ValueRecorder is a bound instrument for Int64ValueRecorder.
 //
 // It inherits the Unbind function from syncBoundInstrument.
-type BoundInt64Histogram struct {
+type BoundInt64ValueRecorder struct {
 	syncBoundInstrument
 }
 
-// Bind creates a bound instrument for this Histogram. The labels are
+// Bind creates a bound instrument for this ValueRecorder. The labels are
 // associated with values recorded via subsequent calls to Record.
-func (c Float64Histogram) Bind(labels ...attribute.KeyValue) (h BoundFloat64Histogram) {
+func (c Float64ValueRecorder) Bind(labels ...attribute.KeyValue) (h BoundFloat64ValueRecorder) {
 	h.syncBoundInstrument = c.bind(labels)
 	return
 }
 
-// Bind creates a bound instrument for this Histogram. The labels are
+// Bind creates a bound instrument for this ValueRecorder. The labels are
 // associated with values recorded via subsequent calls to Record.
-func (c Int64Histogram) Bind(labels ...attribute.KeyValue) (h BoundInt64Histogram) {
+func (c Int64ValueRecorder) Bind(labels ...attribute.KeyValue) (h BoundInt64ValueRecorder) {
 	h.syncBoundInstrument = c.bind(labels)
 	return
 }
 
 // Measurement creates a Measurement object to use with batch
 // recording.
-func (c Float64Histogram) Measurement(value float64) Measurement {
+func (c Float64ValueRecorder) Measurement(value float64) Measurement {
 	return c.float64Measurement(value)
 }
 
 // Measurement creates a Measurement object to use with batch
 // recording.
-func (c Int64Histogram) Measurement(value int64) Measurement {
+func (c Int64ValueRecorder) Measurement(value int64) Measurement {
 	return c.int64Measurement(value)
 }
 
-// Record adds a new value to the list of Histogram's records. The
+// Record adds a new value to the list of ValueRecorder's records. The
 // labels should contain the keys and values to be associated with
 // this value.
-func (c Float64Histogram) Record(ctx context.Context, value float64, labels ...attribute.KeyValue) {
+func (c Float64ValueRecorder) Record(ctx context.Context, value float64, labels ...attribute.KeyValue) {
 	c.directRecord(ctx, number.NewFloat64Number(value), labels)
 }
 
-// Record adds a new value to the Histogram's distribution. The
+// Record adds a new value to the ValueRecorder's distribution. The
 // labels should contain the keys and values to be associated with
 // this value.
-func (c Int64Histogram) Record(ctx context.Context, value int64, labels ...attribute.KeyValue) {
+func (c Int64ValueRecorder) Record(ctx context.Context, value int64, labels ...attribute.KeyValue) {
 	c.directRecord(ctx, number.NewInt64Number(value), labels)
 }
 
-// Record adds a new value to the Histogram's distribution using the labels
-// previously bound to the Histogram via Bind().
-func (b BoundFloat64Histogram) Record(ctx context.Context, value float64) {
+// Record adds a new value to the ValueRecorder's distribution using the labels
+// previously bound to the ValueRecorder via Bind().
+func (b BoundFloat64ValueRecorder) Record(ctx context.Context, value float64) {
 	b.directRecord(ctx, number.NewFloat64Number(value))
 }
 
-// Record adds a new value to the Histogram's distribution using the labels
-// previously bound to the Histogram via Bind().
-func (b BoundInt64Histogram) Record(ctx context.Context, value int64) {
+// Record adds a new value to the ValueRecorder's distribution using the labels
+// previously bound to the ValueRecorder via Bind().
+func (b BoundInt64ValueRecorder) Record(ctx context.Context, value int64) {
 	b.directRecord(ctx, number.NewInt64Number(value))
 }

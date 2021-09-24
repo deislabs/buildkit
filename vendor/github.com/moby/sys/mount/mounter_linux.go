@@ -65,6 +65,7 @@ func mount(device, target, mType string, flags uintptr, data string) error {
 				flags:  oflags | unix.MS_REMOUNT,
 				err:    err,
 			}
+
 		}
 	}
 

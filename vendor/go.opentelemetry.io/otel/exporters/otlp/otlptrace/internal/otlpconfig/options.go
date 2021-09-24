@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package otlpconfig // import "go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/otlpconfig"
+package otlpconfig // import "go.opentelemetry.io/otel/exporters/otlp/internal/otlpconfig"
 
 import (
 	"crypto/tls"
@@ -21,17 +21,32 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/retry"
 )
 
 const (
+	// DefaultMaxAttempts describes how many times the driver
+	// should retry the sending of the payload in case of a
+	// retryable error.
+	DefaultMaxAttempts int = 5
 	// DefaultTracesPath is a default URL path for endpoint that
 	// receives spans.
 	DefaultTracesPath string = "/v1/traces"
+	// DefaultBackoff is a default base backoff time used in the
+	// exponential backoff strategy.
+	DefaultBackoff time.Duration = 300 * time.Millisecond
 	// DefaultTimeout is a default max waiting time for the backend to process
 	// each span batch.
 	DefaultTimeout time.Duration = 10 * time.Second
+)
+
+var (
+	// defaultRetrySettings is a default settings for the retry policy.
+	defaultRetrySettings = RetrySettings{
+		Enabled:         true,
+		InitialInterval: 5 * time.Second,
+		MaxInterval:     30 * time.Second,
+		MaxElapsedTime:  time.Minute,
+	}
 )
 
 type (
@@ -52,12 +67,15 @@ type (
 		// Signal specific configurations
 		Traces SignalConfig
 
-		RetryConfig retry.Config
+		// HTTP configurations
+		MaxAttempts int
+		Backoff     time.Duration
 
 		// gRPC configurations
 		ReconnectionPeriod time.Duration
 		ServiceConfig      string
 		DialOptions        []grpc.DialOption
+		RetrySettings      RetrySettings
 	}
 )
 
@@ -69,7 +87,9 @@ func NewDefaultConfig() Config {
 			Compression: NoCompression,
 			Timeout:     DefaultTimeout,
 		},
-		RetryConfig: retry.DefaultConfig,
+		MaxAttempts:   DefaultMaxAttempts,
+		Backoff:       DefaultBackoff,
+		RetrySettings: defaultRetrySettings,
 	}
 
 	return c
@@ -199,9 +219,9 @@ func WithURLPath(urlPath string) GenericOption {
 	})
 }
 
-func WithRetry(rc retry.Config) GenericOption {
+func WithRetry(settings RetrySettings) GenericOption {
 	return newGenericOption(func(cfg *Config) {
-		cfg.RetryConfig = rc
+		cfg.RetrySettings = settings
 	})
 }
 
@@ -234,5 +254,17 @@ func WithHeaders(headers map[string]string) GenericOption {
 func WithTimeout(duration time.Duration) GenericOption {
 	return newGenericOption(func(cfg *Config) {
 		cfg.Traces.Timeout = duration
+	})
+}
+
+func WithMaxAttempts(maxAttempts int) GenericOption {
+	return newGenericOption(func(cfg *Config) {
+		cfg.MaxAttempts = maxAttempts
+	})
+}
+
+func WithBackoff(duration time.Duration) GenericOption {
+	return newGenericOption(func(cfg *Config) {
+		cfg.Backoff = duration
 	})
 }

@@ -248,11 +248,8 @@ func keyValueToTag(keyValue attribute.KeyValue) *gen.Tag {
 			VDouble: &f,
 			VType:   gen.TagType_DOUBLE,
 		}
-	case attribute.BOOLSLICE,
-		attribute.INT64SLICE,
-		attribute.FLOAT64SLICE,
-		attribute.STRINGSLICE:
-		json, _ := json.Marshal(keyValue.Value.AsInterface())
+	case attribute.ARRAY:
+		json, _ := json.Marshal(keyValue.Value.AsArray())
 		a := (string)(json)
 		tag = &gen.Tag{
 			Key:   string(keyValue.Key),

@@ -48,7 +48,7 @@ type Handler struct {
 	filters           []Filter
 	spanNameFormatter func(string, *http.Request) string
 	counters          map[string]metric.Int64Counter
-	valueRecorders    map[string]metric.Int64Histogram
+	valueRecorders    map[string]metric.Int64ValueRecorder
 }
 
 func defaultHandlerFormatter(operation string, _ *http.Request) string {
@@ -94,7 +94,7 @@ func handleErr(err error) {
 
 func (h *Handler) createMeasures() {
 	h.counters = make(map[string]metric.Int64Counter)
-	h.valueRecorders = make(map[string]metric.Int64Histogram)
+	h.valueRecorders = make(map[string]metric.Int64ValueRecorder)
 
 	requestBytesCounter, err := h.meter.NewInt64Counter(RequestContentLength)
 	handleErr(err)
@@ -102,7 +102,7 @@ func (h *Handler) createMeasures() {
 	responseBytesCounter, err := h.meter.NewInt64Counter(ResponseContentLength)
 	handleErr(err)
 
-	serverLatencyMeasure, err := h.meter.NewInt64Histogram(ServerLatency)
+	serverLatencyMeasure, err := h.meter.NewInt64ValueRecorder(ServerLatency)
 	handleErr(err)
 
 	h.counters[RequestContentLength] = requestBytesCounter

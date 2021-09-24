@@ -16,12 +16,14 @@ package connection
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
+	"github.com/cenkalti/backoff/v4"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -29,7 +31,6 @@ import (
 	"google.golang.org/grpc/encoding/gzip"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/otlpconfig"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/internal/retry"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -47,7 +48,6 @@ type Connection struct {
 	// these fields are read-only after constructor is finished
 	cfg                  otlpconfig.Config
 	SCfg                 otlpconfig.SignalConfig
-	requestFunc          retry.RequestFunc
 	metadata             metadata.MD
 	newConnectionHandler func(cc *grpc.ClientConn)
 
@@ -66,7 +66,6 @@ func NewConnection(cfg otlpconfig.Config, sCfg otlpconfig.SignalConfig, handler 
 	c := new(Connection)
 	c.newConnectionHandler = handler
 	c.cfg = cfg
-	c.requestFunc = cfg.RetryConfig.RequestFunc(evaluate)
 	c.SCfg = sCfg
 	if len(c.SCfg.Headers) > 0 {
 		c.metadata = metadata.New(c.SCfg.Headers)
@@ -288,24 +287,88 @@ func (c *Connection) ContextWithStop(ctx context.Context) (context.Context, cont
 }
 
 func (c *Connection) DoRequest(ctx context.Context, fn func(context.Context) error) error {
-	ctx, cancel := c.ContextWithStop(ctx)
-	defer cancel()
-	return c.requestFunc(ctx, func(ctx context.Context) error {
+	expBackoff := newExponentialBackoff(c.cfg.RetrySettings)
+
+	for {
 		err := fn(ctx)
-		// nil is converted to OK.
-		if status.Code(err) == codes.OK {
-			// Success.
+		if err == nil {
+			// request succeeded.
 			return nil
 		}
-		return err
-	})
+
+		if !c.cfg.RetrySettings.Enabled {
+			return err
+		}
+
+		// We have an error, check gRPC status code.
+		st := status.Convert(err)
+		if st.Code() == codes.OK {
+			// Not really an error, still success.
+			return nil
+		}
+
+		// Now, this is this a real error.
+
+		if !shouldRetry(st.Code()) {
+			// It is not a retryable error, we should not retry.
+			return err
+		}
+
+		// Need to retry.
+
+		throttle := getThrottleDuration(st)
+
+		backoffDelay := expBackoff.NextBackOff()
+		if backoffDelay == backoff.Stop {
+			// throw away the batch
+			err = fmt.Errorf("max elapsed time expired: %w", err)
+			return err
+		}
+
+		var delay time.Duration
+
+		if backoffDelay > throttle {
+			delay = backoffDelay
+		} else {
+			if expBackoff.GetElapsedTime()+throttle > expBackoff.MaxElapsedTime {
+				err = fmt.Errorf("max elapsed time expired when respecting server throttle: %w", err)
+				return err
+			}
+
+			// Respect server throttling.
+			delay = throttle
+		}
+
+		// back-off, but get interrupted when shutting down or request is cancelled or timed out.
+		err = func() error {
+			dt := time.NewTimer(delay)
+			defer dt.Stop()
+
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-c.stopCh:
+				return fmt.Errorf("interrupted due to shutdown: %w", err)
+			case <-dt.C:
+			}
+
+			return nil
+		}()
+
+		if err != nil {
+			return err
+		}
+
+	}
 }
 
-// evaluate returns if err is retry-able and a duration to wait for if an
-// explicit throttle time is included in err.
-func evaluate(err error) (bool, time.Duration) {
-	s := status.Convert(err)
-	switch s.Code() {
+func shouldRetry(code codes.Code) bool {
+	switch code {
+	case codes.OK:
+		// Success. This function should not be called for this code, the best we
+		// can do is tell the caller not to retry.
+		return false
+
 	case codes.Canceled,
 		codes.DeadlineExceeded,
 		codes.ResourceExhausted,
@@ -313,20 +376,54 @@ func evaluate(err error) (bool, time.Duration) {
 		codes.OutOfRange,
 		codes.Unavailable,
 		codes.DataLoss:
-		return true, throttleDelay(s)
-	}
+		// These are retryable errors.
+		return true
 
-	// Not a retry-able error.
-	return false, 0
+	case codes.Unknown,
+		codes.InvalidArgument,
+		codes.Unauthenticated,
+		codes.PermissionDenied,
+		codes.NotFound,
+		codes.AlreadyExists,
+		codes.FailedPrecondition,
+		codes.Unimplemented,
+		codes.Internal:
+		// These are fatal errors, don't retry.
+		return false
+
+	default:
+		// Don't retry on unknown codes.
+		return false
+	}
 }
 
-// throttleDelay returns a duration to wait for if an explicit throttle time
-// is included in the response status.
-func throttleDelay(status *status.Status) time.Duration {
+func getThrottleDuration(status *status.Status) time.Duration {
+	// See if throttling information is available.
 	for _, detail := range status.Details() {
 		if t, ok := detail.(*errdetails.RetryInfo); ok {
-			return t.RetryDelay.AsDuration()
+			if t.RetryDelay.Seconds > 0 || t.RetryDelay.Nanos > 0 {
+				// We are throttled. Wait before retrying as requested by the server.
+				return time.Duration(t.RetryDelay.Seconds)*time.Second + time.Duration(t.RetryDelay.Nanos)*time.Nanosecond
+			}
+			return 0
 		}
 	}
 	return 0
+}
+
+func newExponentialBackoff(rs otlpconfig.RetrySettings) *backoff.ExponentialBackOff {
+	// Do not use NewExponentialBackOff since it calls Reset and the code here must
+	// call Reset after changing the InitialInterval (this saves an unnecessary call to Now).
+	expBackoff := &backoff.ExponentialBackOff{
+		InitialInterval:     rs.InitialInterval,
+		RandomizationFactor: backoff.DefaultRandomizationFactor,
+		Multiplier:          backoff.DefaultMultiplier,
+		MaxInterval:         rs.MaxInterval,
+		MaxElapsedTime:      rs.MaxElapsedTime,
+		Stop:                backoff.Stop,
+		Clock:               backoff.SystemClock,
+	}
+	expBackoff.Reset()
+
+	return expBackoff
 }

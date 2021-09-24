@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package trace // import "go.opentelemetry.io/otel/sdk/trace"
+package trace
 
 import (
 	"time"
@@ -34,7 +34,7 @@ type snapshot struct {
 	endTime                time.Time
 	attributes             []attribute.KeyValue
 	events                 []Event
-	links                  []Link
+	links                  []trace.Link
 	status                 Status
 	childSpanCount         int
 	droppedAttributeCount  int
@@ -87,7 +87,7 @@ func (s snapshot) Attributes() []attribute.KeyValue {
 }
 
 // Links returns all the links the span has to other spans.
-func (s snapshot) Links() []Link {
+func (s snapshot) Links() []trace.Link {
 	return s.links
 }
 

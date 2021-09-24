@@ -402,14 +402,10 @@ type Link struct {
 
 	// Attributes describe the aspects of the link.
 	Attributes []attribute.KeyValue
-}
 
-// LinkFromContext returns a link encapsulating the SpanContext in the provided ctx.
-func LinkFromContext(ctx context.Context, attrs ...attribute.KeyValue) Link {
-	return Link{
-		SpanContext: SpanContextFromContext(ctx),
-		Attributes:  attrs,
-	}
+	// DroppedAttributeCount is the number of attributes that were not
+	// recorded due to configured limits being reached.
+	DroppedAttributeCount int
 }
 
 // SpanKind is the role a Span plays in a Trace.

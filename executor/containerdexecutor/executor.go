@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -188,11 +190,21 @@ func (w *containerdExecutor) Run(ctx context.Context, id string, root executor.M
 		cioOpts = append(cioOpts, cio.WithTerminal)
 	}
 
-	task, err := container.NewTask(ctx, cio.NewCreator(cioOpts...), containerd.WithRootFS([]mount.Mount{{
+	rootfs := []mount.Mount{{
 		Source:  rootfsPath,
 		Type:    "bind",
 		Options: []string{"rbind"},
-	}}))
+	}}
+
+	if runtime.GOOS == "freebsd" {
+		rootfs = []mount.Mount{{
+			Source:  rootfsPath,
+			Type:    "nullfs",
+			Options: []string{"rw"},
+		}}
+	}
+
+	task, err := container.NewTask(ctx, cio.NewCreator(cioOpts...), containerd.WithRootFS(rootfs))
 	if err != nil {
 		return err
 	}

@@ -21,7 +21,6 @@ import (
 	"net/http/httptrace"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 	"go.opentelemetry.io/otel/trace"
@@ -116,7 +115,6 @@ func (t *Transport) RoundTrip(r *http.Request) (*http.Response, error) {
 	res, err := t.rt.RoundTrip(r)
 	if err != nil {
 		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
 		span.End()
 		return res, err
 	}
@@ -146,7 +144,6 @@ func (wb *wrappedBody) Read(b []byte) (int, error) {
 		wb.span.End()
 	default:
 		wb.span.RecordError(err)
-		wb.span.SetStatus(codes.Error, err.Error())
 	}
 	return n, err
 }

@@ -6,6 +6,7 @@ import (
 	"hash"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	fstypes "github.com/tonistiigi/fsutil/types"
@@ -49,8 +50,14 @@ func NewFromStat(stat *fstypes.Stat) (hash.Hash, error) {
 		return nil, err
 	}
 	hdr.Name = "" // note: empty name is different from current has in docker build. Name is added on recursive directory scan instead
-	hdr.Devmajor = stat.Devmajor
-	hdr.Devminor = stat.Devminor
+
+	// On FreeBSD, RDev for regular files may be -1, depending on FS.
+	// Because RDev is an uint64 the cast would result in (2^64 - 1), which is an invalid value for Devminor | Devmajor.
+	// This is a precaution to assign Devmajor/Devminor for special files only.
+	if runtime.GOOS != "freebsd" || hdr.Typeflag == tar.TypeBlock || hdr.Typeflag == tar.TypeChar {
+		hdr.Devmajor = stat.Devmajor
+		hdr.Devminor = stat.Devminor
+	}
 
 	if len(stat.Xattrs) > 0 {
 		hdr.PAXRecords = make(map[string]string, len(stat.Xattrs))

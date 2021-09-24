@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package baggage // import "go.opentelemetry.io/otel/internal/baggage"
+package baggage
 
 import "context"
 

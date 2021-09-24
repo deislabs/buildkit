@@ -17,8 +17,9 @@
 package fstest
 
 import (
-	"errors"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // Lchtimes changes access and mod time of file without following symlink

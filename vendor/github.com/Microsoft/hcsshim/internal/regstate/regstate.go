@@ -34,11 +34,11 @@ var localUser = &Key{registry.CURRENT_USER, "HKEY_CURRENT_USER"}
 var rootPath = `SOFTWARE\Microsoft\runhcs`
 
 type NotFoundError struct {
-	ID string
+	Id string
 }
 
 func (err *NotFoundError) Error() string {
-	return fmt.Sprintf("ID '%s' was not found", err.ID)
+	return fmt.Sprintf("ID '%s' was not found", err.Id)
 }
 
 func IsNotFoundError(err error) bool {

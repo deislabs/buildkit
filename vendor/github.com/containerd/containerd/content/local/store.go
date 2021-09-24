@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -567,7 +568,7 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 
 		// the ingest is new, we need to setup the target location.
 		// write the ref to a file for later use
-		if err := os.WriteFile(refp, []byte(ref), 0666); err != nil {
+		if err := ioutil.WriteFile(refp, []byte(ref), 0666); err != nil {
 			return nil, err
 		}
 
@@ -580,7 +581,7 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 		}
 
 		if total > 0 {
-			if err := os.WriteFile(filepath.Join(path, "total"), []byte(fmt.Sprint(total)), 0666); err != nil {
+			if err := ioutil.WriteFile(filepath.Join(path, "total"), []byte(fmt.Sprint(total)), 0666); err != nil {
 				return nil, err
 			}
 		}
@@ -655,13 +656,13 @@ func (s *store) ingestPaths(ref string) (string, string, string) {
 }
 
 func readFileString(path string) (string, error) {
-	p, err := os.ReadFile(path)
+	p, err := ioutil.ReadFile(path)
 	return string(p), err
 }
 
 // readFileTimestamp reads a file with just a timestamp present.
 func readFileTimestamp(p string) (time.Time, error) {
-	b, err := os.ReadFile(p)
+	b, err := ioutil.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = errors.Wrap(errdefs.ErrNotFound, err.Error())

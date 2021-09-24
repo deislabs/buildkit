@@ -1,4 +1,3 @@
-//go:build !mips && !mipsle && !mips64 && !mips64le
 // +build !mips,!mipsle,!mips64,!mips64le
 
 package signal

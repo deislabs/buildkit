@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 
+	"go.opentelemetry.io/contrib"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/global"
@@ -72,10 +73,9 @@ func newConfig(opts ...Option) *config {
 	if c.TracerProvider != nil {
 		c.Tracer = newTracer(c.TracerProvider)
 	}
-
 	c.Meter = c.MeterProvider.Meter(
 		instrumentationName,
-		metric.WithInstrumentationVersion(SemVersion()),
+		metric.WithInstrumentationVersion(contrib.SemVersion()),
 	)
 
 	return c
@@ -85,9 +85,7 @@ func newConfig(opts ...Option) *config {
 // If none is specified, the global provider is used.
 func WithTracerProvider(provider trace.TracerProvider) Option {
 	return optionFunc(func(cfg *config) {
-		if provider != nil {
-			cfg.TracerProvider = provider
-		}
+		cfg.TracerProvider = provider
 	})
 }
 
@@ -95,9 +93,7 @@ func WithTracerProvider(provider trace.TracerProvider) Option {
 // If none is specified, the global provider is used.
 func WithMeterProvider(provider metric.MeterProvider) Option {
 	return optionFunc(func(cfg *config) {
-		if provider != nil {
-			cfg.MeterProvider = provider
-		}
+		cfg.MeterProvider = provider
 	})
 }
 
@@ -111,12 +107,10 @@ func WithPublicEndpoint() Option {
 }
 
 // WithPropagators configures specific propagators. If this
-// option isn't specified, then the global TextMapPropagator is used.
+// option isn't specified then
 func WithPropagators(ps propagation.TextMapPropagator) Option {
 	return optionFunc(func(c *config) {
-		if ps != nil {
-			c.Propagators = ps
-		}
+		c.Propagators = ps
 	})
 }
 

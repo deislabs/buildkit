@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -23,6 +22,7 @@ import (
 	"github.com/docker/docker/pkg/ioutils"
 	"github.com/docker/docker/pkg/pools"
 	"github.com/docker/docker/pkg/system"
+	"github.com/klauspost/compress/zstd"
 	"github.com/sirupsen/logrus"
 	exec "golang.org/x/sys/execabs"
 )
@@ -84,6 +84,8 @@ const (
 	Gzip
 	// Xz is xz compression algorithm.
 	Xz
+	// Zstd is zstd compression algorithm.
+	Zstd
 )
 
 const (
@@ -128,6 +130,7 @@ func DetectCompression(source []byte) Compression {
 		Bzip2: {0x42, 0x5A, 0x68},
 		Gzip:  {0x1F, 0x8B, 0x08},
 		Xz:    {0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00},
+		Zstd:  {0x28, 0xb5, 0x2f, 0xfd},
 	} {
 		if bytes.HasPrefix(source, m) {
 			return compression
@@ -216,6 +219,13 @@ func DecompressStream(archive io.Reader) (io.ReadCloser, error) {
 		}
 		readBufWrapper := p.NewReadCloserWrapper(buf, xzReader)
 		return wrapReadCloser(readBufWrapper, cancel), nil
+	case Zstd:
+		zstdReader, err := zstd.NewReader(buf)
+		if err != nil {
+			return nil, err
+		}
+		readBufWrapper := p.NewReadCloserWrapper(buf, zstdReader)
+		return readBufWrapper, nil
 	default:
 		return nil, fmt.Errorf("Unsupported compression format %s", (&compression).Extension())
 	}
@@ -342,6 +352,8 @@ func (compression *Compression) Extension() string {
 		return "tar.gz"
 	case Xz:
 		return "tar.xz"
+	case Zstd:
+		return "tar.zst"
 	}
 	return ""
 }
@@ -1284,7 +1296,7 @@ func cmdStream(cmd *exec.Cmd, input io.Reader) (io.ReadCloser, error) {
 // of that file as an archive. The archive can only be read once - as soon as reading completes,
 // the file will be deleted.
 func NewTempArchive(src io.Reader, dir string) (*TempArchive, error) {
-	f, err := ioutil.TempFile(dir, "")
+	f, err := os.CreateTemp(dir, "")
 	if err != nil {
 		return nil, err
 	}

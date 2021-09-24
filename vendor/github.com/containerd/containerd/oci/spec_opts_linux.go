@@ -1,3 +1,5 @@
+// +build linux
+
 /*
    Copyright The containerd Authors.
 
@@ -46,13 +48,13 @@ func WithDevices(devicePath, containerPath, permissions string) SpecOpts {
 		if err != nil {
 			return err
 		}
-		for i := range devs {
-			s.Linux.Devices = append(s.Linux.Devices, devs[i])
+		for _, dev := range devs {
+			s.Linux.Devices = append(s.Linux.Devices, dev)
 			s.Linux.Resources.Devices = append(s.Linux.Resources.Devices, specs.LinuxDeviceCgroup{
 				Allow:  true,
-				Type:   devs[i].Type,
-				Major:  &devs[i].Major,
-				Minor:  &devs[i].Minor,
+				Type:   dev.Type,
+				Major:  &dev.Major,
+				Minor:  &dev.Minor,
 				Access: permissions,
 			})
 		}

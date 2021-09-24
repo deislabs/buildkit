@@ -26,17 +26,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Option allows configuration of the httptrace Extract()
-// and Inject() functions.
-type Option interface {
-	apply(*config)
-}
-
-type optionFunc func(*config)
-
-func (o optionFunc) apply(c *config) {
-	o(c)
-}
+// Option is a function that allows configuration of the httptrace Extract()
+// and Inject() functions
+type Option func(*config)
 
 type config struct {
 	propagators propagation.TextMapPropagator
@@ -45,18 +37,16 @@ type config struct {
 func newConfig(opts []Option) *config {
 	c := &config{propagators: otel.GetTextMapPropagator()}
 	for _, o := range opts {
-		o.apply(c)
+		o(c)
 	}
 	return c
 }
 
 // WithPropagators sets the propagators to use for Extraction and Injection
 func WithPropagators(props propagation.TextMapPropagator) Option {
-	return optionFunc(func(c *config) {
-		if props != nil {
-			c.propagators = props
-		}
-	})
+	return func(c *config) {
+		c.propagators = props
+	}
 }
 
 // Extract returns the Attributes, Context Entries, and SpanContext that were encoded by Inject.

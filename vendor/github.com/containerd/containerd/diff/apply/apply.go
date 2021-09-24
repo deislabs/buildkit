@@ -19,6 +19,7 @@ package apply
 import (
 	"context"
 	"io"
+	"io/ioutil"
 	"time"
 
 	"github.com/containerd/containerd/content"
@@ -98,7 +99,7 @@ func (s *fsApplier) Apply(ctx context.Context, desc ocispec.Descriptor, mounts [
 	}
 
 	// Read any trailing data
-	if _, err := io.Copy(io.Discard, rc); err != nil {
+	if _, err := io.Copy(ioutil.Discard, rc); err != nil {
 		return emptyDesc, err
 	}
 

@@ -1,3 +1,5 @@
+// +build windows
+
 /*
    Copyright The containerd Authors.
 
@@ -278,22 +280,12 @@ func ForceRemoveAll(path string) error {
 func cleanupWCOWLayers(root string) error {
 	// See snapshots/windows/windows.go getSnapshotDir()
 	var layerNums []int
-	var rmLayerNums []int
 	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if path != root && info.IsDir() {
-			name := filepath.Base(path)
-			if strings.HasPrefix(name, "rm-") {
-				layerNum, err := strconv.Atoi(strings.TrimPrefix(name, "rm-"))
-				if err != nil {
-					return err
-				}
-				rmLayerNums = append(rmLayerNums, layerNum)
-			} else {
-				layerNum, err := strconv.Atoi(name)
-				if err != nil {
-					return err
-				}
+			if layerNum, err := strconv.Atoi(filepath.Base(path)); err == nil {
 				layerNums = append(layerNums, layerNum)
+			} else {
+				return err
 			}
 			return filepath.SkipDir
 		}
@@ -303,14 +295,8 @@ func cleanupWCOWLayers(root string) error {
 		return err
 	}
 
-	sort.Sort(sort.Reverse(sort.IntSlice(rmLayerNums)))
-	for _, rmLayerNum := range rmLayerNums {
-		if err := cleanupWCOWLayer(filepath.Join(root, "rm-"+strconv.Itoa(rmLayerNum))); err != nil {
-			return err
-		}
-	}
-
 	sort.Sort(sort.Reverse(sort.IntSlice(layerNums)))
+
 	for _, layerNum := range layerNums {
 		if err := cleanupWCOWLayer(filepath.Join(root, strconv.Itoa(layerNum))); err != nil {
 			return err

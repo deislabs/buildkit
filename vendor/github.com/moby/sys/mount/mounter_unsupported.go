@@ -1,4 +1,3 @@
-//go:build (!linux && !freebsd && !openbsd && !windows) || (freebsd && !cgo) || (openbsd && !cgo)
 // +build !linux,!freebsd,!openbsd,!windows freebsd,!cgo openbsd,!cgo
 
 package mount

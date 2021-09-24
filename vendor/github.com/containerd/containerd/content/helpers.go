@@ -19,6 +19,7 @@ package content
 import (
 	"context"
 	"io"
+	"io/ioutil"
 	"math/rand"
 	"sync"
 	"time"
@@ -143,13 +144,8 @@ func Copy(ctx context.Context, cw Writer, r io.Reader, size int64, expected dige
 		}
 	}
 
-	copied, err := copyWithBuffer(cw, r)
-	if err != nil {
+	if _, err := copyWithBuffer(cw, r); err != nil {
 		return errors.Wrap(err, "failed to copy")
-	}
-	if size != 0 && copied < size-ws.Offset {
-		// Short writes would return its own error, this indicates a read failure
-		return errors.Wrapf(io.ErrUnexpectedEOF, "failed to read expected number of bytes")
 	}
 
 	if err := cw.Commit(ctx, size, expected, opts...); err != nil {
@@ -169,15 +165,8 @@ func CopyReaderAt(cw Writer, ra ReaderAt, n int64) error {
 		return err
 	}
 
-	copied, err := copyWithBuffer(cw, io.NewSectionReader(ra, ws.Offset, n))
-	if err != nil {
-		return errors.Wrap(err, "failed to copy")
-	}
-	if copied < n {
-		// Short writes would return its own error, this indicates a read failure
-		return errors.Wrap(io.ErrUnexpectedEOF, "failed to read expected number of bytes")
-	}
-	return nil
+	_, err = copyWithBuffer(cw, io.NewSectionReader(ra, ws.Offset, n))
+	return err
 }
 
 // CopyReader copies to a writer from a given reader, returning
@@ -229,7 +218,7 @@ func seekReader(r io.Reader, offset, size int64) (io.Reader, error) {
 	}
 
 	// well then, let's just discard up to the offset
-	n, err := copyWithBuffer(io.Discard, io.LimitReader(r, offset))
+	n, err := copyWithBuffer(ioutil.Discard, io.LimitReader(r, offset))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to discard to offset")
 	}

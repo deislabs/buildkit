@@ -21,7 +21,7 @@ FROM --platform=$BUILDPLATFORM alpine:${ALPINE_VERSION} AS git
 RUN apk add --no-cache git
 
 # xx is a helper for cross-compilation
-FROM --platform=$BUILDPLATFORM tonistiigi/xx@sha256:1e96844fadaa2f9aea021b2b05299bc02fe4c39a92d8e735b93e8e2b15610128 AS xx
+FROM --platform=$BUILDPLATFORM tonistiigi/xx@sha256:28b58234c5e3c0f37b2706a0176ccd7c67b384caf9bacdfa22252c39c7bebc21 AS xx
 
 FROM --platform=$BUILDPLATFORM golang:1.17-alpine AS golatest
 
@@ -94,6 +94,9 @@ COPY --from=buildctl /usr/bin/buildctl /
 
 FROM scratch AS binaries-windows
 COPY --from=buildctl /usr/bin/buildctl /buildctl.exe
+
+FROM scratch AS binaries-freebsd
+COPY --from=buildctl /usr/bin/buildctl /
 
 FROM binaries-$TARGETOS AS binaries
 
@@ -206,6 +209,8 @@ FROM binaries AS buildkit-buildkitd-darwin
 FROM binaries AS buildkit-buildkitd-windows
 # this is not in binaries-windows because it is not intended for release yet, just CI
 COPY --from=buildkitd /usr/bin/buildkitd /buildkitd.exe
+
+FROM binaries AS buildkit-buildkitd-freebsd
 
 FROM buildkit-buildkitd-$TARGETOS AS buildkit-buildkitd
 
