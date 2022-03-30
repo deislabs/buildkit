@@ -745,10 +745,11 @@ func testPushByDigest(t *testing.T, sb integration.Sandbox) {
 	_, _, err = contentutil.ProviderFromRef(name + ":latest")
 	require.Error(t, err)
 
-	desc, _, err := contentutil.ProviderFromRef(name + "@" + resp.ExporterResponse[exptypes.ExporterImageDigestKey])
+	md := metadataForExporter(t, resp.ExportersResponse, ExporterImage)
+	desc, _, err := contentutil.ProviderFromRef(name + "@" + md[exptypes.ExporterImageDigestKey])
 	require.NoError(t, err)
 
-	require.Equal(t, resp.ExporterResponse[exptypes.ExporterImageDigestKey], desc.Digest.String())
+	require.Equal(t, md[exptypes.ExporterImageDigestKey], desc.Digest.String())
 	require.Equal(t, images.MediaTypeDockerSchema2Manifest, desc.MediaType)
 	require.True(t, desc.Size > 0)
 }
@@ -911,12 +912,13 @@ func testFrontendImageNaming(t *testing.T, sb integration.Sandbox) {
 	}
 	require.NoError(t, err)
 
-	checkImageName := map[string]func(out, imageName string, exporterResponse map[string]string){
-		ExporterOCI: func(out, imageName string, exporterResponse map[string]string) {
+	checkImageName := map[string]func(out, imageName string, resp *SolveResponse){
+		ExporterOCI: func(out, imageName string, resp *SolveResponse) {
 			// Nothing to check
 			return
 		},
-		ExporterDocker: func(out, imageName string, exporterResponse map[string]string) {
+		ExporterDocker: func(out, imageName string, resp *SolveResponse) {
+			exporterResponse := metadataForExporter(t, resp.ExportersResponse, ExporterDocker)
 			require.Contains(t, exporterResponse, "image.name")
 			require.Equal(t, exporterResponse["image.name"], "docker.io/library/"+imageName)
 
@@ -944,7 +946,8 @@ func testFrontendImageNaming(t *testing.T, sb integration.Sandbox) {
 			require.Equal(t, 1, len(dockerMfst[0].RepoTags))
 			require.Equal(t, imageName, dockerMfst[0].RepoTags[0])
 		},
-		ExporterImage: func(_, imageName string, exporterResponse map[string]string) {
+		ExporterImage: func(_, imageName string, resp *SolveResponse) {
+			exporterResponse := metadataForExporter(t, resp.ExportersResponse, ExporterImage)
 			require.Contains(t, exporterResponse, "image.name")
 			require.Equal(t, exporterResponse["image.name"], imageName)
 
@@ -1039,7 +1042,7 @@ func testFrontendImageNaming(t *testing.T, sb integration.Sandbox) {
 					resp, err := c.Build(sb.Context(), so, "", frontend, nil)
 					require.NoError(t, err)
 
-					checkImageName[exp](out, imageName, resp.ExporterResponse)
+					checkImageName[exp](out, imageName, resp)
 				})
 			}
 		})
@@ -2205,12 +2208,14 @@ func testExporterTargetExists(t *testing.T, sb integration.Sandbox) {
 		},
 	}, nil)
 	require.NoError(t, err)
-	dgst := res.ExporterResponse[exptypes.ExporterImageDigestKey]
+
+	md := metadataForExporter(t, res.ExportersResponse, ExporterOCI)
+	dgst := md[exptypes.ExporterImageDigestKey]
 
 	require.True(t, strings.HasPrefix(dgst, "sha256:"))
 	require.Equal(t, dgst, mdDgst)
 
-	require.True(t, strings.HasPrefix(res.ExporterResponse[exptypes.ExporterImageConfigDigestKey], "sha256:"))
+	require.True(t, strings.HasPrefix(md[exptypes.ExporterImageConfigDigestKey], "sha256:"))
 }
 
 func testTarExporterWithSocket(t *testing.T, sb integration.Sandbox) {
@@ -3868,7 +3873,8 @@ func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	require.NoError(t, err)
 
-	dgst, ok := resp.ExporterResponse[exptypes.ExporterImageDigestKey]
+	md := metadataForExporter(t, resp.ExportersResponse, ExporterImage)
+	dgst, ok := md[exptypes.ExporterImageDigestKey]
 	require.Equal(t, ok, true)
 
 	unique, err := readFileInImage(sb.Context(), c, target+"@"+dgst, "/unique")
@@ -3904,7 +3910,8 @@ func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	require.NoError(t, err)
 
-	dgst2, ok := resp.ExporterResponse[exptypes.ExporterImageDigestKey]
+	md = metadataForExporter(t, resp.ExportersResponse, ExporterImage)
+	dgst2, ok := md[exptypes.ExporterImageDigestKey]
 	require.Equal(t, ok, true)
 
 	require.Equal(t, dgst, dgst2)
@@ -3942,7 +3949,8 @@ func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	require.NoError(t, err)
 
-	dgst2uncompress, ok := resp.ExporterResponse[exptypes.ExporterImageDigestKey]
+	md = metadataForExporter(t, resp.ExportersResponse, ExporterImage)
+	dgst2uncompress, ok := md[exptypes.ExporterImageDigestKey]
 	require.Equal(t, ok, true)
 
 	// dgst2uncompress != dgst, because the compression type is different
@@ -3973,7 +3981,8 @@ func testBasicInlineCacheImportExport(t *testing.T, sb integration.Sandbox) {
 	}, nil)
 	require.NoError(t, err)
 
-	dgst3, ok := resp.ExporterResponse[exptypes.ExporterImageDigestKey]
+	md = metadataForExporter(t, resp.ExportersResponse, ExporterImage)
+	dgst3, ok := md[exptypes.ExporterImageDigestKey]
 	require.Equal(t, ok, true)
 
 	// dgst3 != dgst, because inline cache is not exported for dgst3
@@ -5849,6 +5858,16 @@ func makeSSHAgentSock(agent agent.Agent) (p string, cleanup func() error, err er
 		l.Close()
 		return os.RemoveAll(tmpDir)
 	}, nil
+}
+
+func metadataForExporter(t *testing.T, mds []map[string]string, exporter string) map[string]string {
+	for _, md := range mds {
+		if typ, ok := md[exptypes.ExporterTypeKey]; ok && typ == exporter {
+			return md
+		}
+	}
+	require.FailNowf(t, "no exporter found", "exporter %s", exporter)
+	return nil
 }
 
 func validateMetadataContains(t *testing.T, mds []map[string]string, key string, expectedValues []string) {
