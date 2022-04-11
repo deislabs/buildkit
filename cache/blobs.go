@@ -444,48 +444,67 @@ func isTypeWindows(sr *immutableRef) bool {
 	return false
 }
 
+// Some compression types can't be mixed with other compression types in the same image,
+// so if `source` is this kind of layer, but the target is other compression type, we
+// should do the forced compression.
+func needsForceCompression(source ocispecs.Descriptor, target compression.Type) bool {
+	if target == compression.Nydus {
+		return !isNydusBlob(source)
+	}
+	return isNydusBlob(source)
+}
+
 // ensureCompression ensures the specified ref has the blob of the specified compression Type.
 func ensureCompression(ctx context.Context, ref *immutableRef, comp compression.Config, s session.Group) error {
 	_, err := g.Do(ctx, fmt.Sprintf("%s-%d", ref.ID(), comp.Type), func(ctx context.Context) (interface{}, error) {
+		// First, lookup local content store
+		if _, err := ref.getBlobWithCompression(ctx, comp.Type); err == nil {
+			return nil, nil // found the compression variant. no need to ensure compression.
+		}
+
 		desc, err := ref.ociDesc(ctx, ref.descHandlers, true)
 		if err != nil {
 			return nil, err
 		}
 
-		// Resolve converters
-		layerConvertFunc, err := getConverter(ctx, ref, desc, comp, s)
-		if err != nil {
-			return nil, err
-		} else if layerConvertFunc == nil {
-			if isLazy, err := ref.isLazy(ctx); err != nil {
-				return nil, err
-			} else if isLazy {
-				// This ref can be used as the specified compressionType. Keep it lazy.
-				return nil, nil
+		var newDesc *ocispecs.Descriptor
+		if needsForceCompression(desc, comp.Type) {
+			// For the source compression type which can't provide decompression (for converting) or
+			// unlazy ability, re-compute diff to ensure ref has the specified target compression type.
+			newDesc, err = doCompression(ctx, ref, comp, s)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to do force compression")
 			}
-			return nil, ref.linkBlob(ctx, desc)
+		} else {
+			// Resolve converters
+			layerConvertFunc, err := getConverter(ctx, ref.cm.ContentStore, desc, comp)
+			if err != nil {
+				return nil, err
+			} else if layerConvertFunc == nil {
+				if isLazy, err := ref.isLazy(ctx); err != nil {
+					return nil, err
+				} else if isLazy {
+					// This ref can be used as the specified compressionType. Keep it lazy.
+					return nil, nil
+				}
+				return nil, ref.linkBlob(ctx, desc)
+			}
+			// Convert layer compression type
+			if err := (lazyRefProvider{
+				ref:     ref,
+				desc:    desc,
+				dh:      ref.descHandlers[desc.Digest],
+				session: s,
+			}).Unlazy(ctx); err != nil {
+				return nil, err
+			}
+			newDesc, err = layerConvertFunc(ctx, ref.cm.ContentStore, desc)
+			if err != nil {
+				return nil, errors.Wrapf(err, "failed to convert")
+			}
 		}
 
-		// First, lookup local content store
-		if _, err := ref.getBlobWithCompression(ctx, comp.Type); err == nil {
-			return nil, nil // found the compression variant. no need to convert.
-		}
-
-		// Convert layer compression type
-		if err := (lazyRefProvider{
-			ref:     ref,
-			desc:    desc,
-			dh:      ref.descHandlers[desc.Digest],
-			session: s,
-		}).Unlazy(ctx); err != nil {
-			return nil, err
-		}
-		newDesc, err := layerConvertFunc(ctx, ref.cm.ContentStore, desc)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to convert")
-		}
-
-		// Start to track converted layer
+		// Start to track specified compression type
 		if err := ref.linkBlob(ctx, *newDesc); err != nil {
 			return nil, errors.Wrapf(err, "failed to add compression blob")
 		}
