@@ -12,7 +12,6 @@ import (
 	"github.com/moby/buildkit/client"
 	controlgateway "github.com/moby/buildkit/control/gateway"
 	"github.com/moby/buildkit/exporter"
-	"github.com/moby/buildkit/exporter/containerimage/exptypes"
 	"github.com/moby/buildkit/frontend"
 	"github.com/moby/buildkit/session"
 	"github.com/moby/buildkit/session/grpchijack"
@@ -334,16 +333,8 @@ func (c *Controller) Solve(ctx context.Context, req *controlapi.SolveRequest) (*
 		return nil, err
 	}
 
-	resps := make([]*controlapi.ExporterResponse, 0, len(resp.ExportersResponse))
-	for _, md := range resp.ExportersResponse {
-		resps = append(resps, &controlapi.ExporterResponse{
-			Name:     md[exptypes.ExporterTypeKey],
-			Response: md,
-		})
-	}
 	return &controlapi.SolveResponse{
-		ExporterResponse:  &controlapi.ExporterResponse{Response: resp.ExporterResponse},
-		ExportersResponse: resps,
+		ExporterResponse: &controlapi.ExporterResponse{Response: resp.ExporterResponse},
 	}, nil
 }
 

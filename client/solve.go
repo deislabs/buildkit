@@ -230,14 +230,8 @@ func (c *Client) solve(ctx context.Context, def *llb.Definition, runGateway runG
 			return errors.Wrap(err, "failed to solve")
 		}
 
-		exportersResponse := make([]map[string]string, 0, len(resp.ExportersResponse))
-		for _, resp := range resp.ExportersResponse {
-			exportersResponse = append(exportersResponse, resp.Response)
-		}
-
 		result = &SolveResponse{
-			ExporterResponse:  resp.ExporterResponse.GetResponse(),
-			ExportersResponse: exportersResponse,
+			ExporterResponse: resp.ExporterResponse.GetResponse(),
 		}
 		return nil
 	})

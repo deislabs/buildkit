@@ -199,7 +199,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 		}
 	}
 
-	exportersResponse := []map[string]string{}
+	var exporterResponse map[string]string
 	for _, exp := range out.Exporters {
 		inp := exporter.Source{
 			Metadata: res.Metadata,
@@ -273,7 +273,12 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 				return err
 			}
 			if resp != nil {
-				exportersResponse = append(exportersResponse, resp)
+				if exporterResponse == nil {
+					exporterResponse = make(map[string]string)
+				}
+				for k, v := range resp {
+					exporterResponse[k] = v
+				}
 			}
 			return nil
 		}); err != nil {
@@ -319,8 +324,9 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 			return nil, err
 		}
 	}
-
-	exporterResponse := make(map[string]string)
+	if exporterResponse == nil {
+		exporterResponse = make(map[string]string)
+	}
 	for k, v := range res.Metadata {
 		if strings.HasPrefix(k, "frontend.") {
 			exporterResponse[k] = string(v)
@@ -336,8 +342,7 @@ func (s *Solver) Solve(ctx context.Context, id string, sessionID string, req fro
 	}
 
 	return &client.SolveResponse{
-		ExporterResponse:  exporterResponse,
-		ExportersResponse: exportersResponse,
+		ExporterResponse: exporterResponse,
 	}, nil
 }
 

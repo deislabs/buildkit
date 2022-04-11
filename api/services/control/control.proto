@@ -109,12 +109,7 @@ message ExporterResponse {
 }
 
 message SolveResponse {
-	// ExporterResponse is the metadata aggregated from
-	// alternative sources like cache exporter and frontend
 	ExporterResponse ExporterResponse = 1;
-	// ExportersResponse groups metadata from individual
-	// output exporters
-	repeated ExporterResponse ExportersResponse = 2;
 }
 
 message StatusRequest {
