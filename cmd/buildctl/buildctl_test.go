@@ -6,7 +6,6 @@ import (
 	"path"
 	"testing"
 
-	"github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/util/testutil/integration"
 	"github.com/stretchr/testify/require"
 )
@@ -119,7 +118,7 @@ func TestWriteMetadataFile(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			fname := path.Join(tmpdir, "metadata_"+tt.name)
-			require.NoError(t, writeMetadataFile(fname, &client.SolveResponse{ExporterResponse: tt.exporterResponse}))
+			require.NoError(t, writeMetadataFile(fname, tt.exporterResponse))
 			current, err := os.ReadFile(fname)
 			require.NoError(t, err)
 			var raw map[string]interface{}
