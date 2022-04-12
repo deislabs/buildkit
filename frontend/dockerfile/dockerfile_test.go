@@ -130,6 +130,7 @@ var allTests = integration.TestFuncs(
 	testCopyVarSubstitution,
 	testCopyWildcards,
 	testCopyRelative,
+	testAddGit,
 	testAddURLChmod,
 	testTarContext,
 	testTarContextExternalDockerfile,
@@ -3461,6 +3462,52 @@ COPY --from=build /dest /dest
 	dt, err := os.ReadFile(filepath.Join(destDir, "dest"))
 	require.NoError(t, err)
 	require.Equal(t, []byte("0644\n0755\n0413\n"), dt)
+}
+
+func testAddGit(t *testing.T, sb integration.Sandbox) {
+	f := getFrontend(t, sb)
+
+	dockerfile := []byte(`
+FROM alpine AS build
+ADD https://github.com/moby/buildkit.git#v0.4.0 /buildkit
+WORKDIR /buildkit
+RUN apk add git && git rev-parse HEAD > /dest
+
+FROM scratch
+COPY --from=build /dest /dest
+`)
+
+	dir, err := tmpdir(
+		fstest.CreateFile("Dockerfile", dockerfile, 0600),
+	)
+	require.NoError(t, err)
+	defer os.RemoveAll(dir)
+
+	c, err := client.New(sb.Context(), sb.Address())
+	require.NoError(t, err)
+	defer c.Close()
+
+	destDir, err := tmpdir()
+	require.NoError(t, err)
+	defer os.RemoveAll(destDir)
+
+	_, err = f.Solve(sb.Context(), c, client.SolveOpt{
+		Exports: []client.ExportEntry{
+			{
+				Type:      client.ExporterLocal,
+				OutputDir: destDir,
+			},
+		},
+		LocalDirs: map[string]string{
+			builder.DefaultLocalNameDockerfile: dir,
+			builder.DefaultLocalNameContext:    dir,
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	dt, err := os.ReadFile(filepath.Join(destDir, "dest"))
+	require.NoError(t, err)
+	require.Equal(t, "c35410878ab9070498c66f6c67d3e8bc3b92241f", strings.TrimSpace(string(dt)))
 }
 
 func testDockerfileFromGit(t *testing.T, sb integration.Sandbox) {

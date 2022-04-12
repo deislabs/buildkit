@@ -26,6 +26,7 @@ import (
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/apicaps"
 	binfotypes "github.com/moby/buildkit/util/buildinfo/types"
+	"github.com/moby/buildkit/util/gitutil"
 	"github.com/moby/buildkit/util/suggest"
 	"github.com/moby/buildkit/util/system"
 	"github.com/moby/sys/signal"
@@ -1001,7 +1002,25 @@ func dispatchCopy(d *dispatchState, cfg copyConfig) error {
 
 	for _, src := range cfg.params.SourcePaths {
 		commitMessage.WriteString(" " + src)
-		if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
+		if gitutil.IsGitRef(src) {
+			if !cfg.isAddCommand {
+				return errors.New("source can't be a git ref for COPY")
+			}
+			g, err := gitutil.ParseGitRef(src)
+			if err != nil {
+				return errors.Wrapf(err, "failed to parse a git ref %q", src)
+			}
+			st := llb.Git(g.Repo, g.Commit, llb.KeepGitDir())
+			opts := append([]llb.CopyOption{&llb.CopyInfo{
+				Mode:           mode,
+				CreateDestPath: true,
+			}}, copyOpt...)
+			if a == nil {
+				a = llb.Copy(st, "/", dest, opts...)
+			} else {
+				a = a.Copy(st, "/", dest, opts...)
+			}
+		} else if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") {
 			if !cfg.isAddCommand {
 				return errors.New("source can't be a URL for COPY")
 			}
