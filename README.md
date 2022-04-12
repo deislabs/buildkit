@@ -239,6 +239,7 @@ Keys supported by image output:
 * `force-compression=true`: forcefully apply `compression` option to all layers (including already existing layers).
 * `buildinfo=true`: inline build info in [image config](docs/build-repro.md#image-config) (default `true`).
 * `buildinfo-attrs=true`: inline build info attributes in [image config](docs/build-repro.md#image-config) (default `false`).
+* `ensure-image-blobs=true`: ensure that the image created in the worker's image store (e.g. containerd) has blobs in the content store (default `true`). Ignored if the worker doesn't have image store (e.g. OCI worker).
 
 If credentials are required, `buildctl` will attempt to read Docker configuration file `$DOCKER_CONFIG/config.json`.
 `$DOCKER_CONFIG` defaults to `~/.docker`.

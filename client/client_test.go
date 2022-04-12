@@ -2968,8 +2968,9 @@ func testStargzLazyRegistryCacheImportExport(t *testing.T, sb integration.Sandbo
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name": target,
-					"push": "true",
+					"name":               target,
+					"push":               "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -3111,10 +3112,11 @@ func testStargzLazyInlineCacheImportExport(t *testing.T, sb integration.Sandbox)
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name":           target,
-					"push":           "true",
-					"oci-mediatypes": "true",
-					"compression":    "estargz",
+					"name":               target,
+					"push":               "true",
+					"oci-mediatypes":     "true",
+					"compression":        "estargz",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -3257,9 +3259,10 @@ func testStargzLazyPull(t *testing.T, sb integration.Sandbox) {
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name":           target,
-					"push":           "true",
-					"oci-mediatypes": "true",
+					"name":               target,
+					"push":               "true",
+					"oci-mediatypes":     "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -3354,8 +3357,9 @@ func testLazyImagePush(t *testing.T, sb integration.Sandbox) {
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name": target,
-					"push": "true",
+					"name":               target,
+					"push":               "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -3392,8 +3396,9 @@ func testLazyImagePush(t *testing.T, sb integration.Sandbox) {
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name": target2,
-					"push": "true",
+					"name":               target2,
+					"push":               "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -3424,8 +3429,9 @@ func testLazyImagePush(t *testing.T, sb integration.Sandbox) {
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name": target3,
-					"push": "true",
+					"name":               target3,
+					"push":               "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -4838,8 +4844,9 @@ func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name": busyboxTarget,
-					"push": "true",
+					"name":               busyboxTarget,
+					"push":               "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -4939,8 +4946,9 @@ func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 			{
 				Type: ExporterImage,
 				Attrs: map[string]string{
-					"name": target,
-					"push": "true",
+					"name":               target,
+					"push":               "true",
+					"ensure-image-blobs": "false",
 				},
 			},
 		},
@@ -4993,8 +5001,9 @@ func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 		Exports: []ExportEntry{{
 			Type: ExporterImage,
 			Attrs: map[string]string{
-				"name": target,
-				"push": "true",
+				"name":               target,
+				"push":               "true",
+				"ensure-image-blobs": "false",
 			},
 		}},
 		CacheImports: cacheImports,
@@ -5029,8 +5038,9 @@ func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 		Exports: []ExportEntry{{
 			Type: ExporterImage,
 			Attrs: map[string]string{
-				"name": target,
-				"push": "true",
+				"name":               target,
+				"push":               "true",
+				"ensure-image-blobs": "false",
 			},
 		}},
 		CacheExports: cacheExports,
@@ -5100,8 +5110,9 @@ func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 		Exports: []ExportEntry{{
 			Type: ExporterImage,
 			Attrs: map[string]string{
-				"name": target,
-				"push": "true",
+				"name":               target,
+				"push":               "true",
+				"ensure-image-blobs": "false",
 			},
 		}},
 		CacheExports: cacheExports,
@@ -5144,8 +5155,9 @@ func testMergeOpCache(t *testing.T, sb integration.Sandbox, mode string) {
 		Exports: []ExportEntry{{
 			Type: ExporterImage,
 			Attrs: map[string]string{
-				"name": target,
-				"push": "true",
+				"name":               target,
+				"push":               "true",
+				"ensure-image-blobs": "false",
 			},
 		}},
 		CacheImports: cacheImports,

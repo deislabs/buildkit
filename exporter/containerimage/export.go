@@ -39,6 +39,7 @@ const (
 	keyPushByDigest     = "push-by-digest"
 	keyInsecure         = "registry.insecure"
 	keyUnpack           = "unpack"
+	keyEnsureImageBlobs = "ensure-image-blobs"
 	keyDanglingPrefix   = "dangling-name-prefix"
 	keyNameCanonical    = "name-canonical"
 	keyLayerCompression = "compression"
@@ -79,6 +80,7 @@ func (e *imageExporter) Resolve(ctx context.Context, opt map[string]string) (exp
 		imageExporter:    e,
 		layerCompression: compression.Default,
 		buildInfo:        true,
+		ensureImageBlobs: true,
 	}
 
 	var esgz bool
@@ -126,6 +128,16 @@ func (e *imageExporter) Resolve(ctx context.Context, opt map[string]string) (exp
 				return nil, errors.Wrapf(err, "non-bool value specified for %s", k)
 			}
 			i.unpack = b
+		case keyEnsureImageBlobs:
+			if v == "" {
+				i.ensureImageBlobs = true
+				continue
+			}
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return nil, errors.Wrapf(err, "non-bool value specified for %s", k)
+			}
+			i.ensureImageBlobs = b
 		case ociTypes:
 			if v == "" {
 				i.ociTypes = true
@@ -225,6 +237,7 @@ type imageExporterInstance struct {
 	push                bool
 	pushByDigest        bool
 	unpack              bool
+	ensureImageBlobs    bool
 	insecure            bool
 	ociTypes            bool
 	nameCanonical       bool
@@ -322,6 +335,34 @@ func (e *imageExporterInstance) Export(ctx context.Context, src exporter.Source,
 				if e.unpack {
 					if err := e.unpackImage(ctx, img, src, session.NewGroup(sessionID)); err != nil {
 						return nil, err
+					}
+				}
+				if e.ensureImageBlobs {
+					if src.Ref != nil {
+						remotes, err := src.Ref.GetRemotes(ctx, false, refCfg, false, session.NewGroup(sessionID))
+						if err != nil {
+							return nil, err
+						}
+						remote := remotes[0]
+						if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
+							if err := unlazier.Unlazy(ctx); err != nil {
+								return nil, err
+							}
+						}
+					}
+					if len(src.Refs) > 0 {
+						for _, r := range src.Refs {
+							remotes, err := r.GetRemotes(ctx, false, refCfg, false, session.NewGroup(sessionID))
+							if err != nil {
+								return nil, err
+							}
+							remote := remotes[0]
+							if unlazier, ok := remote.Provider.(cache.Unlazier); ok {
+								if err := unlazier.Unlazy(ctx); err != nil {
+									return nil, err
+								}
+							}
+						}
 					}
 				}
 			}
