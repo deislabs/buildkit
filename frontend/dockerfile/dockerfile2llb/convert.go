@@ -25,7 +25,9 @@ import (
 	"github.com/moby/buildkit/identity"
 	"github.com/moby/buildkit/solver/pb"
 	"github.com/moby/buildkit/util/apicaps"
+	"github.com/moby/buildkit/util/bklog"
 	binfotypes "github.com/moby/buildkit/util/buildinfo/types"
+	"github.com/moby/buildkit/util/sourcemod"
 	"github.com/moby/buildkit/util/suggest"
 	"github.com/moby/buildkit/util/system"
 	"github.com/moby/sys/signal"
@@ -68,6 +70,7 @@ type ConvertOpt struct {
 	Hostname         string
 	Warn             func(short, url string, detail [][]byte, location *parser.Range)
 	ContextByName    func(context.Context, string) (*llb.State, *Image, *binfotypes.BuildInfo, error)
+	Mod              *sourcemod.Applier
 }
 
 func Dockerfile2LLB(ctx context.Context, dt []byte, opt ConvertOpt) (*llb.State, *Image, *binfotypes.BuildInfo, error) {
@@ -152,6 +155,7 @@ func Dockerfile2LLB(ctx context.Context, dt []byte, opt ConvertOpt) (*llb.State,
 		if name == "" {
 			return nil, nil, nil, parser.WithLocation(errors.Errorf("base name (%s) should not be blank", st.BaseName), st.Location)
 		}
+		bklog.G(ctx).Infof("stage name: %s", name)
 		st.BaseName = name
 
 		ds := &dispatchState{
@@ -297,10 +301,18 @@ func Dockerfile2LLB(ctx context.Context, dt []byte, opt ConvertOpt) (*llb.State,
 						}
 					}()
 					origName := d.stage.BaseName
-					ref, err := reference.ParseNormalizedNamed(d.stage.BaseName)
-					if err != nil {
-						return errors.Wrapf(err, "failed to parse stage name %q", d.stage.BaseName)
+					baseName := d.stage.BaseName
+					if opt.Mod != nil {
+						baseName, err = opt.Mod.UpdateRef(ctx, baseName)
+						if err != nil {
+							return err
+						}
 					}
+					ref, err := reference.ParseNormalizedNamed(baseName)
+					if err != nil {
+						return errors.Wrapf(err, "failed to parse stage name %q", baseName)
+					}
+
 					platform := d.platform
 					if platform == nil {
 						platform = &platformOpt.targetPlatform

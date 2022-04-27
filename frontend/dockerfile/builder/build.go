@@ -26,7 +26,9 @@ import (
 	gwpb "github.com/moby/buildkit/frontend/gateway/pb"
 	"github.com/moby/buildkit/solver/errdefs"
 	"github.com/moby/buildkit/solver/pb"
+	"github.com/moby/buildkit/util/bklog"
 	binfotypes "github.com/moby/buildkit/util/buildinfo/types"
+	"github.com/moby/buildkit/util/sourcemod"
 	ocispecs "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
@@ -162,8 +164,7 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 	}
 
 	name := "load build definition from " + filename
-
-	filenames := []string{filename, filename + ".dockerignore"}
+	filenames := []string{filename, filename + ".dockerignore", filename + ".mod"}
 
 	// dockerfile is also supported casing moby/moby#10858
 	if path.Base(filename) == defaultDockerfileName {
@@ -270,6 +271,7 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 	var dtDockerfile []byte
 	var dtDockerignore []byte
 	var dtDockerignoreDefault []byte
+	var dtDockerfileMod []byte
 	eg.Go(func() error {
 		res, err := c.Solve(ctx2, client.SolveRequest{
 			Definition: def.ToPB(),
@@ -310,6 +312,17 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 		})
 		if err == nil {
 			dtDockerignore = dt
+		}
+
+		modName := filename + ".mod"
+		if _, err := ref.StatFile(ctx, client.StatRequest{Path: modName}); err == nil {
+			dtDockerfileMod, err = ref.ReadFile(ctx, client.ReadRequest{
+				Filename: modName,
+			})
+			bklog.G(ctx).Infof("mod: %s, data: %s", modName, string(dtDockerfileMod))
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -417,6 +430,7 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 
 	eg, ctx = errgroup.WithContext(ctx)
 
+	bklog.G(ctx).Info(targetPlatforms)
 	for i, tp := range targetPlatforms {
 		func(i int, tp *ocispecs.Platform) {
 			eg.Go(func() (err error) {
@@ -426,6 +440,23 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 						err = wrapSource(err, sourceMap, el.Location)
 					}
 				}()
+
+				var mod *sourcemod.Applier
+				if dtDockerfileMod != nil {
+					bklog.G(ctx).Info("Reading dockerfile mod")
+					var m sourcemod.Mod
+					if err := json.Unmarshal(dtDockerfileMod, &m); err != nil {
+						bklog.G(ctx).Error(err)
+						return err
+					}
+					mod = sourcemod.NewApplier(m)
+					if err := mod.Validate(); err != nil {
+						return fmt.Errorf("could not parse mod file: %w", err)
+					}
+					bklog.G(ctx).Infof("mod data: %+v", m)
+				} else {
+					bklog.G(ctx).Error("No dockerfile mod")
+				}
 
 				st, img, bi, err := dockerfile2llb.Dockerfile2LLB(ctx, dtDockerfile, dockerfile2llb.ConvertOpt{
 					Target:           opts[keyTarget],
@@ -455,7 +486,8 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 						}
 						c.Warn(ctx, defVtx, msg, warnOpts(sourceMap, location, detail, url))
 					},
-					ContextByName: contextByNameFunc(c, tp),
+					ContextByName: contextByNameFunc(c, tp, mod),
+					Mod:           mod,
 				})
 
 				if err != nil {
@@ -787,7 +819,7 @@ func warnOpts(sm *llb.SourceMap, r *parser.Range, detail [][]byte, url string) c
 	return opts
 }
 
-func contextByNameFunc(c client.Client, p *ocispecs.Platform) func(context.Context, string) (*llb.State, *dockerfile2llb.Image, *binfotypes.BuildInfo, error) {
+func contextByNameFunc(c client.Client, p *ocispecs.Platform, mod *sourcemod.Applier) func(context.Context, string) (*llb.State, *dockerfile2llb.Image, *binfotypes.BuildInfo, error) {
 	return func(ctx context.Context, name string) (*llb.State, *dockerfile2llb.Image, *binfotypes.BuildInfo, error) {
 		named, err := reference.ParseNormalizedNamed(name)
 		if err != nil {
@@ -801,7 +833,7 @@ func contextByNameFunc(c client.Client, p *ocispecs.Platform) func(context.Conte
 		}
 		if p != nil {
 			name := name + "::" + platforms.Format(platforms.Normalize(*p))
-			st, img, bi, err := contextByName(ctx, c, name, p)
+			st, img, bi, err := contextByName(ctx, c, name, p, mod)
 			if err != nil {
 				return nil, nil, nil, err
 			}
@@ -809,11 +841,12 @@ func contextByNameFunc(c client.Client, p *ocispecs.Platform) func(context.Conte
 				return st, img, bi, nil
 			}
 		}
-		return contextByName(ctx, c, name, p)
+
+		return contextByName(ctx, c, name, p, mod)
 	}
 }
 
-func contextByName(ctx context.Context, c client.Client, name string, platform *ocispecs.Platform) (*llb.State, *dockerfile2llb.Image, *binfotypes.BuildInfo, error) {
+func contextByName(ctx context.Context, c client.Client, name string, platform *ocispecs.Platform, mod *sourcemod.Applier) (*llb.State, *dockerfile2llb.Image, *binfotypes.BuildInfo, error) {
 	opts := c.BuildOpts().Opts
 	v, ok := opts["context:"+name]
 	if !ok {
