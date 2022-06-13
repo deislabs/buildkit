@@ -68,6 +68,7 @@ const (
 	keyHostnameArg          = "build-arg:BUILDKIT_SANDBOX_HOSTNAME"
 	keyMultiPlatformArg     = "build-arg:BUILDKIT_MULTI_PLATFORM"
 	keySyntaxArg            = "build-arg:BUILDKIT_SYNTAX"
+	keyModArg               = "build-arg:BUILDKIT_MOD_CONTEXT"
 )
 
 var httpPrefix = regexp.MustCompile(`^https?://`)
@@ -314,16 +315,11 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 			dtDockerignore = dt
 		}
 
-		modName := filename + ".mod"
-		if _, err := ref.StatFile(ctx, client.StatRequest{Path: modName}); err == nil {
-			dtDockerfileMod, err = ref.ReadFile(ctx, client.ReadRequest{
-				Filename: modName,
-			})
-			bklog.G(ctx).Infof("mod: %s, data: %s", modName, string(dtDockerfileMod))
-			if err != nil {
-				return err
-			}
+		dtDockerfileMod, err = loadMods(ctx, c, filename+".mod", opts, ref)
+		if err != nil {
+			return err
 		}
+
 		return nil
 	})
 	var excludes []string
@@ -442,6 +438,7 @@ func Build(ctx context.Context, c client.Client) (*client.Result, error) {
 				}()
 
 				var mod *sourcemod.Applier
+
 				if dtDockerfileMod != nil {
 					bklog.G(ctx).Info("Reading dockerfile mod")
 					var m sourcemod.Mod
